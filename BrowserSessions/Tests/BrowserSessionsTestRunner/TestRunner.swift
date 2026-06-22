@@ -1,7 +1,7 @@
 import Foundation
 import BrowserSessionsCore
 
-private struct TestHarness {
+struct TestHarness {
     var failures = 0
 
     mutating func expect(_ condition: @autoclosure () -> Bool, _ message: String, file: StaticString = #file, line: UInt = #line) {
@@ -65,6 +65,7 @@ enum BrowserSessionsTestRunnerApp {
         runDetectionSnapshotTests(&harness)
         runVisibilityPolicyTests(&harness)
         await runSessionMonitorTests(&harness)
+        await runAgentBrowserClientTests(&harness)
         if harness.failures == 0 {
             print("BrowserSessionsTestRunner: all tests passed")
         } else {

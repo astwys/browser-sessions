@@ -6,6 +6,8 @@ macOS menu bar app to supervise automation browser sessions (`agent-browser`, Pl
 
 **U1 complete (scaffold):** SwiftPM menu bar shell with polling timer, hide/zero-state binding, and unit tests.
 
+**U2 complete:** `agent-browser` CLI client with `CommandRunner`, JSON parsing, and graceful degradation.
+
 Full Xcode is recommended for day-to-day UI work; this repo builds with Swift Package Manager + an app bundle wrapper (Command Line Tools sufficient for U1).
 
 ## Build & run
@@ -35,6 +37,13 @@ BROWSER_SESSIONS_FORCE_ZERO_STATE=1 ./scripts/run-app.sh
 ```
 
 To quit a background instance: `pkill -x BrowserSessions`
+
+### Tests
+
+```bash
+swift run BrowserSessionsTestRunner
+BROWSER_SESSIONS_INTEGRATION=1 swift run BrowserSessionsTestRunner  # requires agent-browser on PATH
+```
 
 Run all three visibility cases in sequence:
 
