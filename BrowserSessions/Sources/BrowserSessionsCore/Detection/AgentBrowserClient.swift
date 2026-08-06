@@ -80,7 +80,7 @@ public struct AgentBrowserClient: AgentBrowserClientProtocol, Sendable {
                 || detail.localizedCaseInsensitiveContains("not found") {
                 return "agent-browser not found on PATH"
             }
-            return detail.isEmpty ? "agent-browser exited with code \(result.exitCode)" : detail
+            return detail.isEmpty ? "agent-browser exited with code \(result.exitCode)" : URLSanitizer.sanitizedUserVisibleMessage(detail)
         }
         return nil
     }
@@ -90,7 +90,7 @@ public struct AgentBrowserClient: AgentBrowserClientProtocol, Sendable {
             return .error(message: "invalid session list JSON")
         }
         guard response.success else {
-            return .error(message: response.error ?? "session list failed")
+            return .error(message: response.error.map { URLSanitizer.sanitizedUserVisibleMessage($0) } ?? "session list failed")
         }
         let names = response.data?.sessions ?? []
         let entries = names.map { DetectedEntry.agentBrowserSession(name: $0) }
@@ -102,7 +102,7 @@ public struct AgentBrowserClient: AgentBrowserClientProtocol, Sendable {
             return .error(message: "invalid close JSON")
         }
         guard response.success, response.data?.closed == true else {
-            return .error(message: response.error ?? "close failed")
+            return .error(message: response.error.map { URLSanitizer.sanitizedUserVisibleMessage($0) } ?? "close failed")
         }
         return .success
     }

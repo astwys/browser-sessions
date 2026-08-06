@@ -7,7 +7,9 @@ func runAgentBrowserClientTests(_ harness: inout TestHarness) async {
     await testMalformedJSONReturnsError(&harness)
     await testUnavailableWhenNotOnPath(&harness)
     await testTimeoutReturnsUnavailable(&harness)
+    await testUnavailableSanitizesStderr(&harness)
     await testCloseSuccess(&harness)
+    await testCloseErrorSanitizesMessage(&harness)
     await testCloseUsesGlobalSessionFlagOrder(&harness)
     await testStableSessionIDs(&harness)
     await testGetURLParsesResponse(&harness)
@@ -81,6 +83,21 @@ private func testTimeoutReturnsUnavailable(_ harness: inout TestHarness) async {
 }
 
 @MainActor
+private func testUnavailableSanitizesStderr(_ harness: inout TestHarness) async {
+    let runner = MockCommandRunner { _, _ in
+        CommandResult(exitCode: 2, stdout: "", stderr: "failed --token abc123 https://example.com/path?secret=value", timedOut: false)
+    }
+    let client = AgentBrowserClient(commandRunner: runner)
+    let result = await client.listSessions()
+    guard case .unavailable(let reason) = result else {
+        harness.expect(false, "expected unavailable")
+        return
+    }
+    harness.expect(reason.contains("abc123") == false, "stderr token redacted")
+    harness.expect(reason.contains("secret=value") == false, "stderr URL query redacted")
+}
+
+@MainActor
 private func testCloseSuccess(_ harness: inout TestHarness) async {
     let runner = MockCommandRunner { _, _ in
         CommandResult(exitCode: 0, stdout: AgentBrowserJSONFixtures.closeSuccess, stderr: "", timedOut: false)
@@ -88,6 +105,20 @@ private func testCloseSuccess(_ harness: inout TestHarness) async {
     let client = AgentBrowserClient(commandRunner: runner)
     let result = await client.closeSession(name: "alpha")
     harness.expectEqual(result, .success, "close success")
+}
+
+@MainActor
+private func testCloseErrorSanitizesMessage(_ harness: inout TestHarness) async {
+    let runner = MockCommandRunner { _, _ in
+        CommandResult(exitCode: 0, stdout: "{\"success\":false,\"error\":\"bad --password swordfish\"}", stderr: "", timedOut: false)
+    }
+    let client = AgentBrowserClient(commandRunner: runner)
+    let result = await client.closeSession(name: "alpha")
+    guard case .error(let message) = result else {
+        harness.expect(false, "expected close error")
+        return
+    }
+    harness.expect(message.contains("swordfish") == false, "close error redacted")
 }
 
 @MainActor

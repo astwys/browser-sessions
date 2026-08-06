@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import BrowserSessionsCore
 
@@ -24,7 +25,23 @@ struct BrowserSessionsApp: App {
             systemImage: "globe",
             isInserted: $isMenuBarInserted
         ) {
-            PopoverShellView(snapshot: monitor.snapshot)
+            PopoverShellView(
+                snapshot: monitor.snapshot,
+                isRefreshing: monitor.isRefreshing,
+                onCloseCompleted: {
+                    await monitor.pollOnce()
+                },
+                onRefresh: {
+                    await monitor.pollOnce()
+                },
+                onOpenSettings: {
+                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                    NSApp.activate(ignoringOtherApps: true)
+                },
+                onQuit: {
+                    NSApp.terminate(nil)
+                }
+            )
         }
         .menuBarExtraStyle(.window)
         .onChange(of: monitor.snapshot.totalCount) { _, count in
@@ -36,7 +53,7 @@ struct BrowserSessionsApp: App {
         }
 
         Settings {
-            EmptyView()
+            PermissionsOnboardingView()
         }
     }
 

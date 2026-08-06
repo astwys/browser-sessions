@@ -5,12 +5,14 @@ import Observation
 @MainActor
 public final class SessionMonitor {
     public private(set) var snapshot: DetectionSnapshot = .empty
+    public private(set) var isRefreshing = false
+    private var refreshQueued = false
     private var timerTask: Task<Void, Never>?
     private let pollInterval: Duration
     private let snapshotProvider: @Sendable () async -> DetectionSnapshot
 
     public init(
-        pollInterval: Duration = .seconds(3),
+        pollInterval: Duration = .seconds(5),
         snapshotProvider: @escaping @Sendable () async -> DetectionSnapshot = { .empty },
         autostart: Bool = true
     ) {
@@ -30,10 +32,16 @@ public final class SessionMonitor {
     }
 
     public static func defaultSnapshotProvider() -> @Sendable () async -> DetectionSnapshot {
-        {
-            let env = ProcessInfo.processInfo.environment["BROWSER_SESSIONS_STUB_COUNT"]
-            let count = env.flatMap(Int.init) ?? 0
-            return DetectionSnapshot(totalCount: count, lastUpdated: Date())
+        if ProcessInfo.processInfo.environment["BROWSER_SESSIONS_STUB_COUNT"] != nil {
+            return {
+                let env = ProcessInfo.processInfo.environment["BROWSER_SESSIONS_STUB_COUNT"]
+                let count = env.flatMap(Int.init) ?? 0
+                return DetectionSnapshot(totalCount: count, lastUpdated: Date())
+            }
+        }
+        let engine = DetectionEngine()
+        return {
+            await engine.snapshot()
         }
     }
 
@@ -42,7 +50,7 @@ public final class SessionMonitor {
         timerTask = Task { [weak self] in
             await self?.pollOnce()
             while !Task.isCancelled {
-                try? await Task.sleep(for: self?.pollInterval ?? .seconds(3))
+                try? await Task.sleep(for: self?.pollInterval ?? .seconds(5))
                 await self?.pollOnce()
             }
         }
@@ -54,7 +62,16 @@ public final class SessionMonitor {
     }
 
     public func pollOnce() async {
-        snapshot = await snapshotProvider()
+        if isRefreshing {
+            refreshQueued = true
+            return
+        }
+        isRefreshing = true
+        defer { isRefreshing = false }
+        repeat {
+            refreshQueued = false
+            snapshot = await snapshotProvider()
+        } while refreshQueued && !Task.isCancelled
     }
 
     public func applySnapshot(_ snapshot: DetectionSnapshot) {

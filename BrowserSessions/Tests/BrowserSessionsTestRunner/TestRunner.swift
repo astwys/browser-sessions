@@ -56,6 +56,37 @@ private func runSessionMonitorTests(_ harness: inout TestHarness) async {
     harness.expect(policy.isInserted(for: snapshot), "transition start")
     snapshot = DetectionSnapshot(totalCount: 0)
     harness.expect(policy.isInserted(for: snapshot) == false, "transition to zero")
+
+    let slowMonitor = SessionMonitor(snapshotProvider: {
+        try? await Task.sleep(for: .milliseconds(50))
+        return DetectionSnapshot(totalCount: 1)
+    }, autostart: false)
+    let pollTask = Task { await slowMonitor.pollOnce() }
+    try? await Task.sleep(for: .milliseconds(10))
+    harness.expect(slowMonitor.isRefreshing, "refresh flag true while poll is in flight")
+    await pollTask.value
+    harness.expect(slowMonitor.isRefreshing == false, "refresh flag clears after poll")
+
+    final class PollCounter: @unchecked Sendable {
+        var count = 0
+    }
+    final class MonitorBox: @unchecked Sendable {
+        var monitor: SessionMonitor?
+    }
+    let counter = PollCounter()
+    let monitorBox = MonitorBox()
+    let queuedMonitor = SessionMonitor(snapshotProvider: {
+        counter.count += 1
+        if counter.count == 1 {
+            Task { await monitorBox.monitor?.pollOnce() }
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+        return DetectionSnapshot(totalCount: counter.count)
+    }, autostart: false)
+    monitorBox.monitor = queuedMonitor
+    await queuedMonitor.pollOnce()
+    harness.expectEqual(counter.count, 2, "refresh requested during active poll is queued")
+    harness.expectEqual(queuedMonitor.snapshot.totalCount, 2, "queued refresh publishes latest snapshot")
 }
 
 @MainActor
@@ -66,6 +97,14 @@ enum BrowserSessionsTestRunnerApp {
         runVisibilityPolicyTests(&harness)
         await runSessionMonitorTests(&harness)
         await runAgentBrowserClientTests(&harness)
+        await runAgentBrowserProcessResolverTests(&harness)
+        await runAutomationSignalClassifierTests(&harness)
+        await runProcessIdentityTests(&harness)
+        runURLSanitizerTests(&harness)
+        await runProcessScannerTests(&harness)
+        await runDetectionEngineTests(&harness)
+        await runCloseCoordinatorTests(&harness)
+        await runDegradationBannerTests(&harness)
         if harness.failures == 0 {
             print("BrowserSessionsTestRunner: all tests passed")
         } else {
