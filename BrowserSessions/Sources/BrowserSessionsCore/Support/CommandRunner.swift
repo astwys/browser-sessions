@@ -1,4 +1,6 @@
+import Darwin
 import Foundation
+import os
 
 public struct CommandResult: Equatable, Sendable {
     public let exitCode: Int32
@@ -22,7 +24,15 @@ public protocol CommandRunning: Sendable {
     func run(executable: String, arguments: [String], timeout: Duration) async -> CommandResult
 }
 
+/// Runs a command found on an augmented PATH. Returns within `timeout` plus fixed grace periods,
+/// whatever the command or its children do.
 public struct CommandRunner: CommandRunning, Sendable {
+    /// Time a command gets to exit after SIGTERM before SIGKILL.
+    private static let terminationGrace: Duration = .milliseconds(500)
+    /// Time to keep reading output after the command exits. A background child it spawned may hold
+    /// the pipes open indefinitely, so the runner never waits for EOF.
+    private static let drainGrace: Duration = .milliseconds(250)
+
     public init() {}
 
     public func run(
@@ -30,91 +40,67 @@ public struct CommandRunner: CommandRunning, Sendable {
         arguments: [String],
         timeout: Duration = .seconds(2)
     ) async -> CommandResult {
-        await Task.detached {
-            Self.runSync(executable: executable, arguments: arguments, timeout: timeout)
-        }.value
-    }
-
-    private static func runSync(
-        executable: String,
-        arguments: [String],
-        timeout: Duration
-    ) -> CommandResult {
         let process = Process()
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        let stdoutBuffer = PipeCaptureBuffer()
-        let stderrBuffer = PipeCaptureBuffer()
-        stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
-            stdoutBuffer.append(handle.availableData)
-        }
-        stderrPipe.fileHandleForReading.readabilityHandler = { handle in
-            stderrBuffer.append(handle.availableData)
-        }
-        defer {
-            stdoutPipe.fileHandleForReading.readabilityHandler = nil
-            stderrPipe.fileHandleForReading.readabilityHandler = nil
-            try? stdoutPipe.fileHandleForReading.close()
-            try? stderrPipe.fileHandleForReading.close()
-        }
+        let stdout = PipeCollector()
+        let stderr = PipeCollector()
+        let exited = Latch()
 
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = [executable] + arguments
-        process.environment = environmentWithAugmentedPath()
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
+        process.environment = Self.environmentWithAugmentedPath()
+        process.standardOutput = stdout.pipe
+        process.standardError = stderr.pipe
+        process.terminationHandler = { _ in exited.open() }
 
         do {
             try process.run()
         } catch {
-            return CommandResult(
-                exitCode: -1,
-                stdout: "",
-                stderr: error.localizedDescription,
-                timedOut: false
-            )
+            stdout.stop()
+            stderr.stop()
+            return CommandResult(exitCode: -1, stdout: "", stderr: error.localizedDescription, timedOut: false)
         }
 
-        let deadline = Date().addingTimeInterval(timeout.timeInterval)
-        while process.isRunning && Date() < deadline {
-            Thread.sleep(forTimeInterval: 0.05)
+        var timedOut = false
+        if await exited.wait(timeout: timeout) == false {
+            timedOut = true
+            Self.signal(process, SIGTERM)
+            if await exited.wait(timeout: Self.terminationGrace) == false {
+                Self.signal(process, SIGKILL)
+                await exited.wait()
+            }
         }
 
-        if process.isRunning {
-            process.terminate()
-            process.waitUntilExit()
-            return CommandResult(
-                exitCode: process.terminationStatus,
-                stdout: stdoutBuffer.string,
-                stderr: "command timed out",
-                timedOut: true
-            )
-        }
-
-        stdoutPipe.fileHandleForReading.readabilityHandler = nil
-        stderrPipe.fileHandleForReading.readabilityHandler = nil
-        stdoutBuffer.append(stdoutPipe.fileHandleForReading.readDataToEndOfFile())
-        stderrBuffer.append(stderrPipe.fileHandleForReading.readDataToEndOfFile())
+        async let stdoutDrained = stdout.eof.wait(timeout: Self.drainGrace)
+        async let stderrDrained = stderr.eof.wait(timeout: Self.drainGrace)
+        _ = await (stdoutDrained, stderrDrained)
+        stdout.stop()
+        stderr.stop()
 
         return CommandResult(
             exitCode: process.terminationStatus,
-            stdout: stdoutBuffer.string,
-            stderr: stderrBuffer.string,
-            timedOut: false
+            stdout: stdout.string,
+            stderr: timedOut ? "command timed out" : stderr.string,
+            timedOut: timedOut
         )
+    }
+
+    private static func signal(_ process: Process, _ signal: Int32) {
+        if process.isRunning {
+            kill(process.processIdentifier, signal)
+        }
     }
 
     private static func environmentWithAugmentedPath() -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
         let inherited = environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
-        let additions = commonExecutableDirectories()
-        let components = (additions + inherited.split(separator: ":").map(String.init))
+        let components = commonExecutableDirectories() + inherited.split(separator: ":").map(String.init)
         environment["PATH"] = Array(NSOrderedSet(array: components))
             .compactMap { $0 as? String }
             .joined(separator: ":")
         return environment
     }
 
+    /// Finder-launched apps get a minimal PATH, so add the usual places a Node CLI is installed.
     private static func commonExecutableDirectories() -> [String] {
         var directories = [
             "/opt/homebrew/bin",
@@ -123,34 +109,88 @@ public struct CommandRunner: CommandRunning, Sendable {
         ]
         let fnmRoot = NSHomeDirectory() + "/.local/share/fnm/node-versions"
         if let versions = try? FileManager.default.contentsOfDirectory(atPath: fnmRoot) {
-            directories += versions.map { fnmRoot + "/" + $0 + "/installation/bin" }
+            directories += versions
+                .sorted { $0.compare($1, options: .numeric) == .orderedDescending }
+                .map { fnmRoot + "/" + $0 + "/installation/bin" }
         }
         return directories
     }
 }
 
-private final class PipeCaptureBuffer: @unchecked Sendable {
-    private let lock = NSLock()
-    private var data = Data()
+/// Collects a pipe's output through `readabilityHandler` only. The handler runs serially per file
+/// handle, so chunks are appended in order; nothing else reads from the pipe.
+private final class PipeCollector: @unchecked Sendable {
+    let pipe = Pipe()
+    let eof = Latch()
+    private let data = OSAllocatedUnfairLock(initialState: Data())
 
-    var string: String {
-        lock.lock()
-        defer { lock.unlock() }
-        return String(data: data, encoding: .utf8) ?? ""
+    init() {
+        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            let chunk = handle.availableData
+            guard let self else { return }
+            if chunk.isEmpty {
+                handle.readabilityHandler = nil
+                self.eof.open()
+            } else {
+                self.data.withLock { $0.append(chunk) }
+            }
+        }
     }
 
-    func append(_ chunk: Data) {
-        guard chunk.isEmpty == false else { return }
-        lock.lock()
-        data.append(chunk)
-        lock.unlock()
+    var string: String {
+        data.withLock { String(decoding: $0, as: UTF8.self) }
+    }
+
+    /// Stops reading. The read end closes when the pipe is deallocated; closing it here could race
+    /// with a handler call that is already in flight.
+    func stop() {
+        pipe.fileHandleForReading.readabilityHandler = nil
     }
 }
 
-private extension Duration {
-    var timeInterval: TimeInterval {
-        let components = components
-        return TimeInterval(components.seconds)
-            + TimeInterval(components.attoseconds) / 1_000_000_000_000_000_000
+/// A one-way gate that async callers can wait on, optionally with a timeout.
+final class Latch: Sendable {
+    private struct State: Sendable {
+        var isOpen = false
+        var waiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+    }
+
+    private let state = OSAllocatedUnfairLock(initialState: State())
+
+    func open() {
+        let waiters = state.withLock { state in
+            state.isOpen = true
+            defer { state.waiters.removeAll() }
+            return Array(state.waiters.values)
+        }
+        waiters.forEach { $0.resume() }
+    }
+
+    /// Returns when the latch opens or the calling task is cancelled.
+    func wait() async {
+        let id = UUID()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                let resumeNow = state.withLock { state in
+                    if state.isOpen || Task.isCancelled { return true }
+                    state.waiters[id] = continuation
+                    return false
+                }
+                if resumeNow { continuation.resume() }
+            }
+        } onCancel: {
+            state.withLock { $0.waiters.removeValue(forKey: id) }?.resume()
+        }
+    }
+
+    /// Returns true if the latch opened before `timeout` elapsed.
+    func wait(timeout: Duration) async -> Bool {
+        await withTaskGroup(of: Bool.self) { group in
+            group.addTask { await self.wait(); return true }
+            group.addTask { try? await Task.sleep(for: timeout); return false }
+            _ = await group.next()
+            group.cancelAll()
+            return state.withLock { $0.isOpen }
+        }
     }
 }

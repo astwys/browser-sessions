@@ -21,7 +21,7 @@ struct BrowserSessionsApp: App {
 
     var body: some Scene {
         MenuBarExtra(
-            menuBarTitle,
+            monitor.snapshot.menuBarBadge ?? "",
             systemImage: "globe",
             isInserted: $isMenuBarInserted
         ) {
@@ -54,15 +54,6 @@ struct BrowserSessionsApp: App {
 
         Settings {
             PermissionsOnboardingView()
-        }
-    }
-
-    private var menuBarTitle: String {
-        switch MenuBarPresentation.from(snapshot: monitor.snapshot, hideSupported: visibilityPolicy == .hideWhenEmpty) {
-        case .badge(let text):
-            return text
-        case .neutralZeroState, .hidden:
-            return ""
         }
     }
 }

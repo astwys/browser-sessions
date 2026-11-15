@@ -109,6 +109,8 @@ Verify examples against expected UI:
 - Puppeteer cache + `--enable-automation` → HIGH / closable
 - `--remote-debugging-port=9222` only → LOW / inspect-only
 - `chrome_crashpad_handler` → not listed
+- Renderer/GPU/utility helpers of a listed browser → not listed (one row per browser)
+- `chrome-devtools-mcp` Node server → not listed; the Chrome it drives → one HIGH row
 
 ## Completion note
 

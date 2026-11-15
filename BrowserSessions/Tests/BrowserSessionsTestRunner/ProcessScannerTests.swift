@@ -3,27 +3,22 @@ import BrowserSessionsCore
 
 @MainActor
 func runProcessScannerTests(_ harness: inout TestHarness) async {
-    await testScannerClassifiesPSOutput(&harness)
+    testScannerListsEachBrowserOnce(&harness)
+    testScannerToleratesDuplicatePIDs(&harness)
 }
 
 @MainActor
-private func testScannerClassifiesPSOutput(_ harness: inout TestHarness) async {
-    final class Capture: @unchecked Sendable {
-        var executable = ""
-        var arguments: [String] = []
-    }
-    let capture = Capture()
-    let runner = MockCommandRunner { executable, arguments in
-        capture.executable = executable
-        capture.arguments = arguments
-        return CommandResult(exitCode: 0, stdout: CmdlineFixtures.psOutput, stderr: "", timedOut: false)
-    }
-    let scanner = ProcessScanner(commandRunner: runner)
-    let entries = await scanner.scan()
-    harness.expectEqual(capture.executable, "ps", "scanner executable")
-    harness.expectEqual(capture.arguments, ["-axo", "pid=,ppid=,lstart=,command=", "-ww"], "scanner ps arguments")
-    harness.expectEqual(entries.count, 1, "scanner excludes crashpad")
-    harness.expectEqual(entries.first?.confidence, .low, "scanner classifies remote debugging port as low")
-    harness.expectEqual(entries.first?.processIdentity?.pid, 101, "scanner populates identity pid")
-    harness.expect(entries.first?.id.isEmpty == false, "scanner creates stable id")
+private func testScannerListsEachBrowserOnce(_ harness: inout TestHarness) {
+    let entries = ProcessScanner.entries(from: ProcessFixtures.realWorldTable)
+    harness.expectEqual(entries.map { $0.processIdentity?.pid }, [502, 601], "one row per browser; helpers, crashpad and the MCP server are excluded")
+    harness.expectEqual(entries.map(\.confidence), [.high, .low], "pipe browser is high, plain headless browser is low")
+    harness.expectEqual(entries.first?.signalReason, "--remote-debugging-pipe", "signals come from the browser's own arguments")
+    harness.expectEqual(entries.first?.parentProcessSummary, "chrome-devtools-mcp", "parent summary shows the launcher")
+}
+
+@MainActor
+private func testScannerToleratesDuplicatePIDs(_ harness: inout TestHarness) {
+    let browser = ProcessFixtures.realWorldTable[2]
+    let entries = ProcessScanner.entries(from: [browser, browser])
+    harness.expectEqual(entries.count, 2, "duplicate PIDs do not crash the scanner")
 }

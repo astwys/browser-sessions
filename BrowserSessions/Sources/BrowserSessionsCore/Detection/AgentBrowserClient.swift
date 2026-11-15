@@ -14,7 +14,6 @@ public enum AgentBrowserCloseResult: Equatable, Sendable {
 
 public protocol AgentBrowserClientProtocol: Sendable {
     func listSessions() async -> AgentBrowserListResult
-    func getURL(session: String) async -> String?
     func closeSession(name: String) async -> AgentBrowserCloseResult
 }
 
@@ -43,16 +42,6 @@ public struct AgentBrowserClient: AgentBrowserClientProtocol, Sendable {
             return .unavailable(reason: unavailable)
         }
         return parseListResponse(result.stdout)
-    }
-
-    public func getURL(session: String) async -> String? {
-        let result = await commandRunner.run(
-            executable: executable,
-            arguments: ["--session", session, "get", "url", "--json"],
-            timeout: timeout
-        )
-        guard result.succeeded else { return nil }
-        return decode(URLResponse.self, from: result.stdout)?.data?.url
     }
 
     public func closeSession(name: String) async -> AgentBrowserCloseResult {
@@ -131,14 +120,4 @@ private struct CloseResponse: Decodable {
 
 private struct CloseData: Decodable {
     let closed: Bool
-}
-
-private struct URLResponse: Decodable {
-    let success: Bool
-    let data: URLData?
-    let error: String?
-}
-
-private struct URLData: Decodable {
-    let url: String
 }

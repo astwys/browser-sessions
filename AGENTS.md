@@ -24,16 +24,22 @@ Supervise local automation browsers from the menu bar. See `docs/brainstorms/202
 
 - List: `agent-browser session list --json`
 - Close: `agent-browser --session <name> close --json` (**not** `close --session`)
-- URL: `agent-browser --session <name> get url --json`
+- Never call `get url` while polling: since 0.28.0 it can recreate a closed session as about:blank.
 
 ## Detection posture
 
 **Visibility over confidence** — prefer listing possible browsers (LOW tier) over omitting. Close is gated on known/`agent-browser` or HIGH-confidence signals only.
 
+Process data comes from libproc/sysctl (`ProcessTable`), never from `ps`, and only for the current user. The environment block is never read.
+
+One row per browser main process:
+- A browser is an exact executable name (`Google Chrome`, `Chromium`, `chrome-headless-shell`, …) or anything under `/ms-playwright/`. Substring matches let `chrome-devtools-mcp` in.
+- Helpers are excluded: paths under `Helpers/` or `.xpc/`, `--type=` (Chromium) and `-contentproc` (Firefox) arguments.
+- Signals come from the process's own executable and arguments. The parent only contributes "launched by Playwright/Puppeteer", matched on package paths (`playwright-core`, `node_modules/puppeteer`, …), so a child never inherits its browser's flags.
+
 Signal summary:
-- HIGH: `ms-playwright` paths, `--remote-debugging-pipe`, Playwright profile markers, Playwright/Puppeteer parent cmdlines, Puppeteer cache path + `--enable-automation`
-- LOW: `--remote-debugging-port=`, headless flags, temp user-data dirs, browser-family processes without HIGH signals
-- Exclude crashpad/helper processes such as `chrome_crashpad_handler`
+- HIGH: `ms-playwright` paths, `--remote-debugging-pipe`, Playwright profile markers, Playwright/Puppeteer parent packages, Puppeteer path + `--enable-automation`
+- LOW: `--remote-debugging-port=`, headless flags, user-data dirs, browser main processes without HIGH signals
 
 ## Manual testing
 

@@ -26,9 +26,6 @@ private func runDetectionSnapshotTests(_ harness: inout TestHarness) {
     harness.expectEqual(DetectionSnapshot(totalCount: 101).menuBarBadge, "99+", "overflow badge")
     harness.expect(DetectionSnapshot(totalCount: 0).shouldShowMenuBarItem == false, "hide at zero")
     harness.expect(DetectionSnapshot(totalCount: 1).shouldShowMenuBarItem, "show when nonzero")
-    harness.expectEqual(MenuBarPresentation.from(snapshot: .empty, hideSupported: true), .hidden, "hidden presentation")
-    harness.expectEqual(MenuBarPresentation.from(snapshot: .empty, hideSupported: false), .neutralZeroState, "neutral zero state")
-    harness.expectEqual(MenuBarPresentation.from(snapshot: DetectionSnapshot(totalCount: 3), hideSupported: true), .badge("3"), "badge presentation")
 }
 
 @MainActor
@@ -48,9 +45,6 @@ private func runSessionMonitorTests(_ harness: inout TestHarness) async {
     try? await Task.sleep(for: .milliseconds(10))
     await monitor.pollOnce()
     harness.expect(monitor.snapshot.lastUpdated >= before, "poll updates timestamp")
-    monitor.applySnapshot(DetectionSnapshot(totalCount: 5))
-    harness.expectEqual(monitor.snapshot.totalCount, 5, "apply snapshot count")
-    harness.expectEqual(monitor.snapshot.menuBarBadge, "5", "apply snapshot badge")
     let policy = MenuBarVisibilityPolicy.hideWhenEmpty
     var snapshot = DetectionSnapshot(totalCount: 1)
     harness.expect(policy.isInserted(for: snapshot), "transition start")
@@ -87,6 +81,29 @@ private func runSessionMonitorTests(_ harness: inout TestHarness) async {
     await queuedMonitor.pollOnce()
     harness.expectEqual(counter.count, 2, "refresh requested during active poll is queued")
     harness.expectEqual(queuedMonitor.snapshot.totalCount, 2, "queued refresh publishes latest snapshot")
+
+    await testPollingStopsWhenMonitorIsReleased(&harness)
+}
+
+@MainActor
+private func testPollingStopsWhenMonitorIsReleased(_ harness: inout TestHarness) async {
+    final class Polls: @unchecked Sendable {
+        var count = 0
+    }
+    let polls = Polls()
+    var monitor: SessionMonitor? = SessionMonitor(pollInterval: .milliseconds(10), snapshotProvider: {
+        polls.count += 1
+        return .empty
+    })
+    try? await Task.sleep(for: .milliseconds(50))
+    weak let released = monitor
+    monitor = nil
+    try? await Task.sleep(for: .milliseconds(30))
+    let pollsAfterRelease = polls.count
+    try? await Task.sleep(for: .milliseconds(60))
+    harness.expect(pollsAfterRelease > 0, "monitor polled while alive")
+    harness.expect(released == nil, "polling task does not keep the monitor alive")
+    harness.expectEqual(polls.count, pollsAfterRelease, "polling stops once the monitor is gone")
 }
 
 @MainActor
@@ -96,6 +113,8 @@ enum BrowserSessionsTestRunnerApp {
         runDetectionSnapshotTests(&harness)
         runVisibilityPolicyTests(&harness)
         await runSessionMonitorTests(&harness)
+        await runCommandRunnerTests(&harness)
+        await runProcessTableTests(&harness)
         await runAgentBrowserClientTests(&harness)
         await runAgentBrowserProcessResolverTests(&harness)
         await runAutomationSignalClassifierTests(&harness)

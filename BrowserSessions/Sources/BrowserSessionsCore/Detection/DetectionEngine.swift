@@ -2,35 +2,30 @@ import Foundation
 
 public struct DetectionEngine: Sendable {
     private let agentBrowserClient: any AgentBrowserClientProtocol
-    private let processSnapshotProvider: any ProcessSnapshotProviding
-    private let processScanner: any ProcessScanning
+    private let listProcesses: @Sendable () -> [ProcessRecord]
     private let agentBrowserProcessResolver: any AgentBrowserProcessResolving
 
     public init(
         agentBrowserClient: any AgentBrowserClientProtocol = AgentBrowserClient(),
-        processSnapshotProvider: any ProcessSnapshotProviding = ProcessSnapshotProvider(),
-        processScanner: any ProcessScanning = ProcessScanner(),
+        listProcesses: @escaping @Sendable () -> [ProcessRecord] = ProcessTable.all,
         agentBrowserProcessResolver: any AgentBrowserProcessResolving = AgentBrowserProcessResolver()
     ) {
         self.agentBrowserClient = agentBrowserClient
-        self.processSnapshotProvider = processSnapshotProvider
-        self.processScanner = processScanner
+        self.listProcesses = listProcesses
         self.agentBrowserProcessResolver = agentBrowserProcessResolver
     }
 
     public func snapshot() async -> DetectionSnapshot {
-        async let sessionsResult = agentBrowserClient.listSessions()
-        async let processRecords = processSnapshotProvider.records()
-
-        let (agentResult, records) = await (sessionsResult, processRecords)
-        let processes = processScanner.scan(records: records)
+        let agentResult = await agentBrowserClient.listSessions()
+        // Read processes after the session list so every listed session's browser has had time to appear.
+        let records = listProcesses()
+        let processes = ProcessScanner.entries(from: records)
         let (knownSessions, degradedReason): ([DetectedEntry], String?)
         switch agentResult {
         case .available(let entries):
-            // Do not call `agent-browser --session <name> get url` during polling.
-            // In agent-browser 0.28.0+ that command can recreate a closed/absent session
-            // as about:blank, which makes Close appear ineffective.
-            let metadata = await agentBrowserProcessResolver.metadata(for: entries.map(\.sessionName), records: records)
+            // Never call `agent-browser --session <name> get url` while polling: since 0.28.0 it can
+            // recreate a closed session as about:blank, which makes Close look ineffective.
+            let metadata = agentBrowserProcessResolver.metadata(for: entries.map(\.sessionName), records: records)
             knownSessions = Self.enrichKnownSessions(entries, metadata: metadata)
             degradedReason = nil
         case .unavailable(let reason):
@@ -76,7 +71,6 @@ public struct DetectionEngine: Sendable {
             if let streamPort = sessionMetadata.streamPort { details.append("stream \(streamPort)") }
             return DetectedEntry.agentBrowserSession(
                 name: entry.sessionName,
-                url: entry.url,
                 processIdentity: sessionMetadata.browserIdentity,
                 commandLineSnippet: sessionMetadata.browserCommandLineSnippet,
                 parentProcessSummary: sessionMetadata.agentProcessSummary,

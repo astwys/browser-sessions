@@ -12,8 +12,4 @@ enum AgentBrowserJSONFixtures {
     """
 
     static let malformed = "not json"
-
-    static let urlResponse = """
-    {"success":true,"data":{"url":"https://example.com"},"error":null}
-    """
 }

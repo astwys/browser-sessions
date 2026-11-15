@@ -51,7 +51,7 @@ public struct CloseCoordinator: Sendable {
         guard entry.confidence == .high, let identity = entry.processIdentity else {
             return .notClosable
         }
-        guard let current = await identityReader.currentIdentity(pid: identity.pid), identity.matches(current: current) else {
+        guard let current = identityReader.currentIdentity(pid: identity.pid), identity.matches(current: current) else {
             return .staleTarget
         }
         switch processKiller.terminate(pid: identity.pid) {

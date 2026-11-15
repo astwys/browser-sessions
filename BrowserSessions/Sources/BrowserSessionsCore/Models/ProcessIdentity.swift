@@ -27,9 +27,11 @@ public struct ProcessIdentity: Equatable, Sendable, Codable {
         self.signalTokens = signalTokens
     }
 
-    public func matches(current: ProcessIdentity, startTimeTolerance: TimeInterval = 0.5) -> Bool {
+    /// Start times come from the kernel with microsecond precision, so they must match exactly:
+    /// a reused PID always has a different start time.
+    public func matches(current: ProcessIdentity) -> Bool {
         guard pid == current.pid else { return false }
-        guard abs(startTime.timeIntervalSince(current.startTime)) <= startTimeTolerance else { return false }
+        guard startTime == current.startTime else { return false }
         guard executablePath == current.executablePath else { return false }
         guard commandLine == current.commandLine else { return false }
         if signalTokens.isEmpty && current.signalTokens.isEmpty { return true }

@@ -3,51 +3,40 @@ import BrowserSessionsCore
 
 @MainActor
 func runAgentBrowserProcessResolverTests(_ harness: inout TestHarness) async {
-    await testResolverConnectsSessionPidToBrowserChild(&harness)
-    await testResolverIgnoresUnsafeSessionNames(&harness)
+    testResolverConnectsSessionPidToBrowserChild(&harness)
+    testResolverIgnoresUnsafeSessionNames(&harness)
 }
 
 @MainActor
-private func testResolverConnectsSessionPidToBrowserChild(_ harness: inout TestHarness) async {
-    let stateDirectory = temporaryStateDirectory()
-    write("900", to: stateDirectory.appendingPathComponent("alpha.pid"))
+private func testResolverConnectsSessionPidToBrowserChild(_ harness: inout TestHarness) {
+    let stateDirectory = temporaryStateDirectory(pid: "600")
     write("chrome", to: stateDirectory.appendingPathComponent("alpha.engine"))
-    write("0.29.0", to: stateDirectory.appendingPathComponent("alpha.version"))
+    write("0.43.0", to: stateDirectory.appendingPathComponent("alpha.version"))
     write("50995", to: stateDirectory.appendingPathComponent("alpha.stream"))
 
-    let psOutput = """
-      900     1 Mon Jun 22 15:54:29 2026 /opt/homebrew/bin/agent-browser-daemon
-      901   900 Mon Jun 22 15:54:30 2026 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome --remote-debugging-port=0 --user-data-dir=/tmp/agent-browser-profile
-    """
-    let runner = MockCommandRunner { _, _ in
-        CommandResult(exitCode: 0, stdout: psOutput, stderr: "", timedOut: false)
-    }
-    let resolver = AgentBrowserProcessResolver(commandRunner: runner, stateDirectory: stateDirectory)
-    let metadata = await resolver.metadata(for: ["alpha"])["alpha"]
+    let resolver = AgentBrowserProcessResolver(stateDirectory: stateDirectory)
+    let metadata = resolver.metadata(for: ["alpha"], records: ProcessFixtures.realWorldTable)["alpha"]
 
-    harness.expectEqual(metadata?.agentPID, 900, "resolver reads agent pid")
+    harness.expectEqual(metadata?.agentPID, 600, "resolver reads agent pid")
     harness.expectEqual(metadata?.engine, "chrome", "resolver reads engine")
-    harness.expectEqual(metadata?.version, "0.29.0", "resolver reads version")
+    harness.expectEqual(metadata?.version, "0.43.0", "resolver reads version")
     harness.expectEqual(metadata?.streamPort, "50995", "resolver reads stream port")
-    harness.expectEqual(metadata?.browserIdentity?.pid, 901, "resolver finds browser child pid")
-    harness.expect(metadata?.browserCommandLineSnippet?.contains("--remote-debugging-port=0") == true, "resolver carries sanitized browser command")
+    harness.expectEqual(metadata?.browserIdentity?.pid, 601, "resolver finds browser child pid")
+    harness.expectEqual(metadata?.browserCommandLineSnippet, URLSanitizer.sanitizedCommandLineSnippet(ProcessFixtures.realWorldTable[7].commandLine), "resolver carries sanitized browser command")
 }
 
 @MainActor
-private func testResolverIgnoresUnsafeSessionNames(_ harness: inout TestHarness) async {
-    let stateDirectory = temporaryStateDirectory()
-    write("900", to: stateDirectory.appendingPathComponent("alpha.pid"))
-    let runner = MockCommandRunner { _, _ in
-        CommandResult(exitCode: 0, stdout: "", stderr: "", timedOut: false)
-    }
-    let resolver = AgentBrowserProcessResolver(commandRunner: runner, stateDirectory: stateDirectory)
-    let metadata = await resolver.metadata(for: ["../alpha"])
+private func testResolverIgnoresUnsafeSessionNames(_ harness: inout TestHarness) {
+    let resolver = AgentBrowserProcessResolver(stateDirectory: temporaryStateDirectory(pid: "600"))
+    let metadata = resolver.metadata(for: ["../alpha"], records: ProcessFixtures.realWorldTable)
     harness.expectEqual(metadata.count, 0, "unsafe session names do not read state files")
 }
 
-private func temporaryStateDirectory() -> URL {
+/// A state directory holding `alpha.pid`.
+func temporaryStateDirectory(pid: String) -> URL {
     let url = FileManager.default.temporaryDirectory.appendingPathComponent("BrowserSessionsTests-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    write(pid, to: url.appendingPathComponent("alpha.pid"))
     return url
 }
 

@@ -47,11 +47,12 @@ public final class SessionMonitor {
 
     public func start() {
         guard timerTask == nil else { return }
+        let interval = pollInterval
+        // Holds `self` weakly between polls and ends once the monitor is gone.
         timerTask = Task { [weak self] in
-            await self?.pollOnce()
-            while !Task.isCancelled {
-                try? await Task.sleep(for: self?.pollInterval ?? .seconds(5))
+            while !Task.isCancelled, self != nil {
                 await self?.pollOnce()
+                try? await Task.sleep(for: interval)
             }
         }
     }
@@ -72,9 +73,5 @@ public final class SessionMonitor {
             refreshQueued = false
             snapshot = await snapshotProvider()
         } while refreshQueued && !Task.isCancelled
-    }
-
-    public func applySnapshot(_ snapshot: DetectionSnapshot) {
-        self.snapshot = snapshot
     }
 }

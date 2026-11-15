@@ -6,6 +6,15 @@ func runURLSanitizerTests(_ harness: inout TestHarness) {
     testCommandLineRedactsSplitSecretFlags(&harness)
     testCommandLineRedactsBearerAndCookieValues(&harness)
     testUserVisibleMessageIsSanitizedAndBounded(&harness)
+    testCommandLineRedactsURLCredentialsAndBasicAuth(&harness)
+}
+
+@MainActor
+private func testCommandLineRedactsURLCredentialsAndBasicAuth(_ harness: inout TestHarness) {
+    let snippet = URLSanitizer.sanitizedCommandLineSnippet("chrome --proxy-server=http://alice:s3cret@proxy.local:8080 -H 'Authorization: Basic YWxpY2U6czNjcmV0'", maxLength: 200)
+    harness.expect(snippet.contains("s3cret") == false, "URL userinfo password redacted")
+    harness.expect(snippet.contains("YWxpY2U6czNjcmV0") == false, "basic auth value redacted")
+    harness.expect(snippet.contains("proxy.local:8080"), "proxy host stays visible")
 }
 
 @MainActor

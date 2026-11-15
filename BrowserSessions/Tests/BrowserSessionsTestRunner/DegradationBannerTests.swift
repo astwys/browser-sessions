@@ -16,21 +16,10 @@ private func testSnapshotCarriesDegradedReason(_ harness: inout TestHarness) {
 
 @MainActor
 private func testCliMissingProducesDegradedSnapshot(_ harness: inout TestHarness) async {
-    let process = DetectedEntry.process(
-        identity: ProcessIdentity(
-            pid: 321,
-            parentPID: 1,
-            startTime: Date(timeIntervalSince1970: 10),
-            executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-            commandLine: CmdlineFixtures.remoteDebuggingOnly,
-            signalTokens: ["--remote-debugging-port="]
-        ),
-        confidence: .low,
-        displayName: "Google Chrome"
-    )
+    let records = [ProcessFixtures.record(321, parent: 1, ProcessFixtures.chromeApp + "/MacOS/Google Chrome", "--remote-debugging-port=9222")]
     let engine = DetectionEngine(
         agentBrowserClient: DegradationMockAgentBrowserClient(),
-        processScanner: DegradationMockProcessScanner(entries: [process])
+        listProcesses: { records }
     )
     let snapshot = await engine.snapshot()
     harness.expectEqual(snapshot.degradedReason, "agent-browser not found on PATH", "cli missing reason")
@@ -39,12 +28,5 @@ private func testCliMissingProducesDegradedSnapshot(_ harness: inout TestHarness
 
 private struct DegradationMockAgentBrowserClient: AgentBrowserClientProtocol {
     func listSessions() async -> AgentBrowserListResult { .unavailable(reason: "agent-browser not found on PATH") }
-    func getURL(session: String) async -> String? { nil }
     func closeSession(name: String) async -> AgentBrowserCloseResult { .unavailable(reason: "agent-browser not found on PATH") }
-}
-
-private struct DegradationMockProcessScanner: ProcessScanning {
-    let entries: [DetectedEntry]
-    func scan() async -> [DetectedEntry] { entries }
-    func scan(records: [ProcessRecord]) -> [DetectedEntry] { entries }
 }

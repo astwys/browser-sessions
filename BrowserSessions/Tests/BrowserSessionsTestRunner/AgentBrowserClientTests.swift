@@ -12,7 +12,6 @@ func runAgentBrowserClientTests(_ harness: inout TestHarness) async {
     await testCloseErrorSanitizesMessage(&harness)
     await testCloseUsesGlobalSessionFlagOrder(&harness)
     await testStableSessionIDs(&harness)
-    await testGetURLParsesResponse(&harness)
     await runAgentBrowserIntegrationTestsIfEnabled(&harness)
 }
 
@@ -146,25 +145,6 @@ private func testStableSessionIDs(_ harness: inout TestHarness) async {
     let other = DetectedEntry.agentBrowserSession(name: "beta")
     harness.expectEqual(first.id, second.id, "stable id for same session")
     harness.expect(first.id != other.id, "different ids for different sessions")
-}
-
-@MainActor
-private func testGetURLParsesResponse(_ harness: inout TestHarness) async {
-    final class Capture: @unchecked Sendable {
-        var executable = ""
-        var arguments: [String] = []
-    }
-    let capture = Capture()
-    let runner = MockCommandRunner { executable, arguments in
-        capture.executable = executable
-        capture.arguments = arguments
-        return CommandResult(exitCode: 0, stdout: AgentBrowserJSONFixtures.urlResponse, stderr: "", timedOut: false)
-    }
-    let client = AgentBrowserClient(commandRunner: runner)
-    let url = await client.getURL(session: "alpha")
-    harness.expectEqual(capture.executable, "agent-browser", "url executable")
-    harness.expectEqual(capture.arguments, ["--session", "alpha", "get", "url", "--json"], "url argv")
-    harness.expectEqual(url, "https://example.com", "parsed url")
 }
 
 @MainActor

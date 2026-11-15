@@ -5,13 +5,12 @@ private struct CloseMockAgentBrowserClient: AgentBrowserClientProtocol {
     let closeResult: AgentBrowserCloseResult
 
     func listSessions() async -> AgentBrowserListResult { .available([]) }
-    func getURL(session: String) async -> String? { nil }
     func closeSession(name: String) async -> AgentBrowserCloseResult { closeResult }
 }
 
 private struct MockIdentityReader: ProcessIdentityReading {
     let identity: ProcessIdentity?
-    func currentIdentity(pid: Int32) async -> ProcessIdentity? { identity }
+    func currentIdentity(pid: Int32) -> ProcessIdentity? { identity }
 }
 
 private final class MockProcessKiller: ProcessKilling, @unchecked Sendable {

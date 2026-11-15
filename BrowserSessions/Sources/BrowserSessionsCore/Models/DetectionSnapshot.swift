@@ -48,23 +48,6 @@ public struct DetectionSnapshot: Equatable, Sendable {
     public var shouldShowMenuBarItem: Bool {
         totalCount > 0
     }
-
-    public var isNeutralZeroState: Bool {
-        totalCount == 0
-    }
-}
-
-public enum MenuBarPresentation: Equatable, Sendable {
-    case hidden
-    case neutralZeroState
-    case badge(String)
-
-    public static func from(snapshot: DetectionSnapshot, hideSupported: Bool) -> MenuBarPresentation {
-        if snapshot.totalCount > 0 {
-            return .badge(snapshot.menuBarBadge ?? String(snapshot.totalCount))
-        }
-        return hideSupported ? .hidden : .neutralZeroState
-    }
 }
 
 public enum MenuBarVisibilityPolicy: Equatable, Sendable {
