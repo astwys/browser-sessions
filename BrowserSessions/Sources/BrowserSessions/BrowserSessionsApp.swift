@@ -20,28 +20,13 @@ struct BrowserSessionsApp: App {
     }
 
     var body: some Scene {
-        MenuBarExtra(
-            monitor.snapshot.menuBarBadge ?? "",
-            systemImage: "globe",
-            isInserted: $isMenuBarInserted
-        ) {
-            PopoverShellView(
-                snapshot: monitor.snapshot,
-                isRefreshing: monitor.isRefreshing,
-                onCloseCompleted: {
-                    await monitor.pollOnce()
-                },
-                onRefresh: {
-                    await monitor.pollOnce()
-                },
-                onOpenSettings: {
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                    NSApp.activate(ignoringOtherApps: true)
-                },
-                onQuit: {
-                    NSApp.terminate(nil)
-                }
-            )
+        // The `MenuBarExtra(_:systemImage:)` initializer draws only the image; a Label draws the count too.
+        MenuBarExtra(isInserted: $isMenuBarInserted) {
+            PopoverContent(monitor: monitor)
+        } label: {
+            Label(monitor.snapshot.menuBarBadge ?? "", systemImage: "globe")
+                .labelStyle(.titleAndIcon)
+                .accessibilityLabel("Browser Sessions, \(monitor.snapshot.totalCount) running")
         }
         .menuBarExtraStyle(.window)
         .onChange(of: monitor.snapshot.totalCount) { _, count in
@@ -55,5 +40,32 @@ struct BrowserSessionsApp: App {
         Settings {
             PermissionsOnboardingView()
         }
+    }
+}
+
+/// Reads the per-poll state (`lastUpdated`, `isRefreshing`) in its own view, so the scene body and the
+/// menu bar label depend on `snapshot` only and redraw only when detection results change.
+private struct PopoverContent: View {
+    let monitor: SessionMonitor
+
+    var body: some View {
+        PopoverShellView(
+            snapshot: monitor.snapshot,
+            lastUpdated: monitor.lastUpdated,
+            isRefreshing: monitor.isRefreshing,
+            onCloseCompleted: {
+                await monitor.pollOnce()
+            },
+            onRefresh: {
+                await monitor.pollOnce()
+            },
+            onOpenSettings: {
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                NSApp.activate(ignoringOtherApps: true)
+            },
+            onQuit: {
+                NSApp.terminate(nil)
+            }
+        )
     }
 }

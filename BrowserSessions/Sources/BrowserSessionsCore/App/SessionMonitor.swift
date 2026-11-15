@@ -4,7 +4,9 @@ import Observation
 @Observable
 @MainActor
 public final class SessionMonitor {
+    /// Reassigned only when detection results change: every assignment redraws the menu bar item.
     public private(set) var snapshot: DetectionSnapshot = .empty
+    public private(set) var lastUpdated: Date = .distantPast
     public private(set) var isRefreshing = false
     private var refreshQueued = false
     private var timerTask: Task<Void, Never>?
@@ -28,7 +30,7 @@ public final class SessionMonitor {
     public static func initialSnapshotFromEnvironment() -> DetectionSnapshot {
         let env = ProcessInfo.processInfo.environment["BROWSER_SESSIONS_STUB_COUNT"]
         let count = env.flatMap(Int.init) ?? 0
-        return DetectionSnapshot(totalCount: count, lastUpdated: Date())
+        return DetectionSnapshot(totalCount: count)
     }
 
     public static func defaultSnapshotProvider() -> @Sendable () async -> DetectionSnapshot {
@@ -36,7 +38,7 @@ public final class SessionMonitor {
             return {
                 let env = ProcessInfo.processInfo.environment["BROWSER_SESSIONS_STUB_COUNT"]
                 let count = env.flatMap(Int.init) ?? 0
-                return DetectionSnapshot(totalCount: count, lastUpdated: Date())
+                return DetectionSnapshot(totalCount: count)
             }
         }
         let engine = DetectionEngine()
@@ -71,7 +73,11 @@ public final class SessionMonitor {
         defer { isRefreshing = false }
         repeat {
             refreshQueued = false
-            snapshot = await snapshotProvider()
+            let next = await snapshotProvider()
+            if next != snapshot {
+                snapshot = next
+            }
+            lastUpdated = Date()
         } while refreshQueued && !Task.isCancelled
     }
 }

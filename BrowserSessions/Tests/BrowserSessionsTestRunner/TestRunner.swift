@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import BrowserSessionsCore
 
 struct TestHarness {
@@ -41,10 +42,11 @@ private func runVisibilityPolicyTests(_ harness: inout TestHarness) {
 @MainActor
 private func runSessionMonitorTests(_ harness: inout TestHarness) async {
     let monitor = SessionMonitor(snapshotProvider: { DetectionSnapshot(totalCount: 0) }, autostart: false)
-    let before = monitor.snapshot.lastUpdated
+    let before = monitor.lastUpdated
     try? await Task.sleep(for: .milliseconds(10))
     await monitor.pollOnce()
-    harness.expect(monitor.snapshot.lastUpdated >= before, "poll updates timestamp")
+    harness.expect(monitor.lastUpdated > before, "poll updates timestamp")
+    await testUnchangedPollDoesNotRepublishSnapshot(&harness)
     let policy = MenuBarVisibilityPolicy.hideWhenEmpty
     var snapshot = DetectionSnapshot(totalCount: 1)
     harness.expect(policy.isInserted(for: snapshot), "transition start")
@@ -83,6 +85,30 @@ private func runSessionMonitorTests(_ harness: inout TestHarness) async {
     harness.expectEqual(queuedMonitor.snapshot.totalCount, 2, "queued refresh publishes latest snapshot")
 
     await testPollingStopsWhenMonitorIsReleased(&harness)
+}
+
+@MainActor
+private func testUnchangedPollDoesNotRepublishSnapshot(_ harness: inout TestHarness) async {
+    final class Count: @unchecked Sendable {
+        var value = 1
+    }
+    final class Flag: @unchecked Sendable {
+        var fired = false
+    }
+    let count = Count()
+    let monitor = SessionMonitor(snapshotProvider: { DetectionSnapshot(totalCount: count.value) }, autostart: false)
+    await monitor.pollOnce()
+
+    let unchanged = Flag()
+    withObservationTracking { _ = monitor.snapshot } onChange: { unchanged.fired = true }
+    await monitor.pollOnce()
+    harness.expect(unchanged.fired == false, "a poll with the same results does not invalidate snapshot observers")
+
+    let changed = Flag()
+    withObservationTracking { _ = monitor.snapshot } onChange: { changed.fired = true }
+    count.value = 2
+    await monitor.pollOnce()
+    harness.expect(changed.fired, "a poll with new results invalidates snapshot observers")
 }
 
 @MainActor

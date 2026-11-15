@@ -3,6 +3,7 @@ import SwiftUI
 
 public struct PopoverShellView: View {
     public let snapshot: DetectionSnapshot
+    public let lastUpdated: Date
     public let isRefreshing: Bool
     private let closeCoordinator: CloseCoordinator
     private let onCloseCompleted: @Sendable () async -> Void
@@ -15,6 +16,7 @@ public struct PopoverShellView: View {
 
     public init(
         snapshot: DetectionSnapshot,
+        lastUpdated: Date = Date(),
         isRefreshing: Bool = false,
         closeCoordinator: CloseCoordinator = CloseCoordinator(),
         onCloseCompleted: @escaping @Sendable () async -> Void = {},
@@ -23,6 +25,7 @@ public struct PopoverShellView: View {
         onQuit: @escaping () -> Void = {}
     ) {
         self.snapshot = snapshot
+        self.lastUpdated = lastUpdated
         self.isRefreshing = isRefreshing
         self.closeCoordinator = closeCoordinator
         self.onCloseCompleted = onCloseCompleted
@@ -85,10 +88,10 @@ public struct PopoverShellView: View {
                         .foregroundStyle(.secondary)
                         .transition(.opacity)
                 }
-                Text(snapshot.lastUpdated, style: .time)
+                Text(lastUpdated, style: .time)
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.tertiary)
-                    .accessibilityLabel("Last updated \(snapshot.lastUpdated.formatted(date: .omitted, time: .standard))")
+                    .accessibilityLabel("Last updated \(lastUpdated.formatted(date: .omitted, time: .standard))")
             }
         }
     }

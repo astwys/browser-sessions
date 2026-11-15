@@ -3,11 +3,10 @@ import Foundation
 public struct DetectionSnapshot: Equatable, Sendable {
     public var entries: [DetectedEntry]
     public var degradedReason: String?
-    public var lastUpdated: Date
 
-    public static let empty = DetectionSnapshot(entries: [], lastUpdated: .distantPast)
+    public static let empty = DetectionSnapshot(entries: [])
 
-    public init(totalCount: Int, lastUpdated: Date = Date()) {
+    public init(totalCount: Int) {
         self.entries = (0..<max(0, totalCount)).map { index in
             DetectedEntry(
                 id: "stub-\(index)",
@@ -17,13 +16,11 @@ public struct DetectionSnapshot: Equatable, Sendable {
             )
         }
         self.degradedReason = nil
-        self.lastUpdated = lastUpdated
     }
 
-    public init(entries: [DetectedEntry], degradedReason: String? = nil, lastUpdated: Date = Date()) {
+    public init(entries: [DetectedEntry], degradedReason: String? = nil) {
         self.entries = entries
         self.degradedReason = degradedReason
-        self.lastUpdated = lastUpdated
     }
 
     public var totalCount: Int { entries.count }
