@@ -2,9 +2,17 @@ import Foundation
 import BrowserSessionsCore
 
 private struct MockAgentBrowserClient: AgentBrowserClientProtocol {
-    let result: AgentBrowserListResult
+    final class Calls: @unchecked Sendable {
+        var count = 0
+    }
 
-    func listSessions() async -> AgentBrowserListResult { result }
+    let result: AgentBrowserListResult
+    var calls = Calls()
+
+    func listSessions() async -> AgentBrowserListResult {
+        calls.count += 1
+        return result
+    }
     func closeSession(name: String) async -> AgentBrowserCloseResult { .success }
 }
 
@@ -19,12 +27,14 @@ func runDetectionEngineTests(_ harness: inout TestHarness) async {
     await testDetectionEngineEnrichesKnownSessionWithProcessMetadata(&harness)
     await testDetectionEngineShowsOneRowPerRealBrowser(&harness)
     await testDetectionEngineCarriesDegradedReason(&harness)
+    await testDetectionEngineAsksCLIOnlyWhenDaemonsChange(&harness)
     await testSessionMonitorPublishesEngineSnapshot(&harness)
 }
 
 @MainActor
 private func testDetectionEngineMergesSessionsAndProcesses(_ harness: inout TestHarness) async {
     let records = [
+        ProcessFixtures.agentBrowserDaemon,
         ProcessFixtures.record(10, parent: 1, "/usr/local/bin/node", "/repo/node_modules/.bin/playwright test"),
         ProcessFixtures.record(11, parent: 10, ProcessFixtures.chromeApp + "/MacOS/Google Chrome", "--remote-debugging-pipe")
     ]
@@ -64,7 +74,7 @@ private func testDetectionEngineEnrichesKnownSessionWithProcessMetadata(_ harnes
     )
     let engine = DetectionEngine(
         agentBrowserClient: MockAgentBrowserClient(result: .available([DetectedEntry.agentBrowserSession(name: "alpha")])),
-        listProcesses: { [] },
+        listProcesses: { [ProcessFixtures.agentBrowserDaemon] },
         agentBrowserProcessResolver: MockAgentBrowserProcessResolver(metadata: ["alpha": metadata])
     )
     let snapshot = await engine.snapshot()
@@ -93,7 +103,7 @@ private func testDetectionEngineShowsOneRowPerRealBrowser(_ harness: inout TestH
 
 @MainActor
 private func testDetectionEngineCarriesDegradedReason(_ harness: inout TestHarness) async {
-    let records = [ProcessFixtures.record(456, parent: 1, ProcessFixtures.chromeApp + "/MacOS/Google Chrome", "--remote-debugging-port=9222")]
+    let records = [ProcessFixtures.agentBrowserDaemon, ProcessFixtures.record(456, parent: 1, ProcessFixtures.chromeApp + "/MacOS/Google Chrome", "--remote-debugging-port=9222")]
     let engine = DetectionEngine(
         agentBrowserClient: MockAgentBrowserClient(result: .unavailable(reason: "agent-browser missing")),
         listProcesses: { records },
@@ -103,6 +113,34 @@ private func testDetectionEngineCarriesDegradedReason(_ harness: inout TestHarne
     harness.expectEqual(snapshot.totalCount, 1, "processes still count when cli unavailable")
     harness.expectEqual(snapshot.degradedReason, "agent-browser missing", "degraded reason")
     harness.expectEqual(snapshot.lowConfidenceProcesses.count, 1, "low process survives degradation")
+}
+
+@MainActor
+private func testDetectionEngineAsksCLIOnlyWhenDaemonsChange(_ harness: inout TestHarness) async {
+    final class Table: @unchecked Sendable {
+        var records: [ProcessRecord] = []
+    }
+    let table = Table()
+    let client = MockAgentBrowserClient(result: .available([DetectedEntry.agentBrowserSession(name: "alpha")]))
+    let engine = DetectionEngine(
+        agentBrowserClient: client,
+        listProcesses: { table.records },
+        agentBrowserProcessResolver: MockAgentBrowserProcessResolver()
+    )
+
+    let idle = await engine.snapshot()
+    harness.expectEqual(client.calls.count, 0, "no agent-browser process: the CLI is not spawned")
+    harness.expectEqual(idle.knownSessions.count, 0, "no agent-browser process: no sessions")
+
+    table.records = [ProcessFixtures.agentBrowserDaemon]
+    _ = await engine.snapshot()
+    let unchanged = await engine.snapshot()
+    harness.expectEqual(client.calls.count, 1, "unchanged daemons reuse the last session list")
+    harness.expectEqual(unchanged.knownSessions.map(\.sessionName), ["alpha"], "cached list is still shown")
+
+    table.records = [ProcessFixtures.agentBrowserDaemon, ProcessFixtures.record(700, parent: 1, "/opt/homebrew/bin/agent-browser", "")]
+    _ = await engine.snapshot()
+    harness.expectEqual(client.calls.count, 2, "a new daemon triggers a fresh session list")
 }
 
 @MainActor

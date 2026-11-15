@@ -17,7 +17,7 @@ public struct PermissionsOnboardingView: View {
                 )
                 OnboardingRow(
                     title: "agent-browser CLI",
-                    detail: "When available, the app runs agent-browser session list --json and close commands with a short timeout."
+                    detail: "While an agent-browser daemon is running, the app runs agent-browser session list --json when the daemons change, and close when you ask, each with a short timeout."
                 )
                 OnboardingRow(
                     title: "No Accessibility access in v1",

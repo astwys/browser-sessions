@@ -22,7 +22,7 @@ Supervise local automation browsers from the menu bar. See `docs/brainstorms/202
 
 ## CLI contract (`agent-browser`)
 
-- List: `agent-browser session list --json`
+- List: `agent-browser session list --json`, called only when the set of running `agent-browser*` processes changes. Every session has a daemon, so none running means no sessions and no spawn.
 - Close: `agent-browser --session <name> close --json` (**not** `close --session`)
 - Never call `get url` while polling: since 0.28.0 it can recreate a closed session as about:blank.
 

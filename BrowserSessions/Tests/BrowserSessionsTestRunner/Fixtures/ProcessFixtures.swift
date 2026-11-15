@@ -19,6 +19,8 @@ enum ProcessFixtures {
         )
     }
 
+    static let agentBrowserDaemon = record(600, parent: 1, "/opt/homebrew/Cellar/agent-browser/0.43.0/libexec/bin/agent-browser", "")
+
     static let realWorldTable: [ProcessRecord] = [
         // chrome-devtools-mcp: the npm wrapper, the Node server (its process title is rewritten), and the Chrome it drives.
         ProcessRecord(pid: 500, parentPID: 1, startTime: Date(timeIntervalSince1970: 1_500), executablePath: "/opt/homebrew/Cellar/node/25.0.0/bin/node", commandLine: "npm exec chrome-devtools-mcp@latest --isolated --headless"),
@@ -28,7 +30,7 @@ enum ProcessFixtures {
         record(504, parent: 502, chromeHelpers + "/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer)", "--type=renderer --enable-automation --remote-debugging-pipe"),
         record(505, parent: 502, chromeHelpers + "/chrome_crashpad_handler", "--monitor-self"),
         // agent-browser: the daemon and its Chrome for Testing.
-        record(600, parent: 1, "/opt/homebrew/Cellar/agent-browser/0.43.0/libexec/bin/agent-browser", ""),
+        agentBrowserDaemon,
         record(601, parent: 600, testingApp + "/MacOS/Google Chrome for Testing", "--headless=new --remote-debugging-port=0 --user-data-dir=/var/folders/xy/agent-browser-profile"),
         record(602, parent: 601, testingHelpers + "/Google Chrome for Testing Helper (GPU).app/Contents/MacOS/Google Chrome for Testing Helper (GPU)", "--type=gpu-process --headless=new --user-data-dir=/var/folders/xy/agent-browser-profile"),
         record(603, parent: 601, testingHelpers + "/Google Chrome for Testing Helper (Renderer).app/Contents/MacOS/Google Chrome for Testing Helper (Renderer)", "--type=renderer --headless=new --remote-debugging-port=0")

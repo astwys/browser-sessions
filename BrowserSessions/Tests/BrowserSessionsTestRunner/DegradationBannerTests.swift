@@ -16,7 +16,7 @@ private func testSnapshotCarriesDegradedReason(_ harness: inout TestHarness) {
 
 @MainActor
 private func testCliMissingProducesDegradedSnapshot(_ harness: inout TestHarness) async {
-    let records = [ProcessFixtures.record(321, parent: 1, ProcessFixtures.chromeApp + "/MacOS/Google Chrome", "--remote-debugging-port=9222")]
+    let records = [ProcessFixtures.agentBrowserDaemon, ProcessFixtures.record(321, parent: 1, ProcessFixtures.chromeApp + "/MacOS/Google Chrome", "--remote-debugging-port=9222")]
     let engine = DetectionEngine(
         agentBrowserClient: DegradationMockAgentBrowserClient(),
         listProcesses: { records }

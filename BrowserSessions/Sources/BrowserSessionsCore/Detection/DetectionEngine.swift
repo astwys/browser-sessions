@@ -1,9 +1,12 @@
 import Foundation
+import os
 
 public struct DetectionEngine: Sendable {
     private let agentBrowserClient: any AgentBrowserClientProtocol
     private let listProcesses: @Sendable () -> [ProcessRecord]
     private let agentBrowserProcessResolver: any AgentBrowserProcessResolving
+    /// The last session list and the agent-browser processes that were running when it was read.
+    private let sessionCache = OSAllocatedUnfairLock<(daemons: [String], entries: [DetectedEntry])?>(initialState: nil)
 
     public init(
         agentBrowserClient: any AgentBrowserClientProtocol = AgentBrowserClient(),
@@ -16,9 +19,8 @@ public struct DetectionEngine: Sendable {
     }
 
     public func snapshot() async -> DetectionSnapshot {
-        let agentResult = await agentBrowserClient.listSessions()
-        // Read processes after the session list so every listed session's browser has had time to appear.
         let records = listProcesses()
+        let agentResult = await listSessions(daemons: Self.agentBrowserProcesses(in: records))
         let processes = ProcessScanner.entries(from: records)
         let (knownSessions, degradedReason): ([DetectedEntry], String?)
         switch agentResult {
@@ -37,7 +39,30 @@ public struct DetectionEngine: Sendable {
         }
 
         let merged = Self.merge(knownSessions: knownSessions, processEntries: processes)
-        return DetectionSnapshot(entries: merged, degradedReason: degradedReason, lastUpdated: Date())
+        return DetectionSnapshot(entries: merged, degradedReason: degradedReason)
+    }
+
+    /// Every agent-browser session is served by a running agent-browser daemon, so the CLI is asked only
+    /// when that set of processes changes. With none running there are no sessions and nothing is spawned.
+    private func listSessions(daemons: [String]) async -> AgentBrowserListResult {
+        if daemons.isEmpty { return .available([]) }
+        if let cached = sessionCache.withLock({ $0 }), cached.daemons == daemons {
+            return .available(cached.entries)
+        }
+        let result = await agentBrowserClient.listSessions()
+        if case .available(let entries) = result {
+            sessionCache.withLock { $0 = (daemons, entries) }
+        }
+        return result
+    }
+
+    /// Identity of every running agent-browser process. Matches the native binary's names
+    /// (`agent-browser`, `agent-browser-darwin-arm64`); a Node-hosted daemon would need its own rule.
+    static func agentBrowserProcesses(in records: [ProcessRecord]) -> [String] {
+        records
+            .filter { URL(fileURLWithPath: $0.executablePath).lastPathComponent.hasPrefix("agent-browser") }
+            .map { "\($0.pid)@\($0.startTime.timeIntervalSince1970)" }
+            .sorted()
     }
 
     public static func merge(knownSessions: [DetectedEntry], processEntries: [DetectedEntry]) -> [DetectedEntry] {
