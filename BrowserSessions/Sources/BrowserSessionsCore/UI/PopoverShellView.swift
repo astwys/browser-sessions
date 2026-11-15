@@ -73,13 +73,8 @@ public struct PopoverShellView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Browser Sessions")
-                    .font(.headline)
-                Text(snapshot.totalCount == 0 ? "No automation browsers running" : "See every automation browser running locally")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Text("Browser Sessions")
+                .font(.headline)
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
                 if isRefreshing {
@@ -88,7 +83,7 @@ public struct PopoverShellView: View {
                         .foregroundStyle(.secondary)
                         .transition(.opacity)
                 }
-                Text(lastUpdated, style: .time)
+                Text("Updated \(lastUpdated, style: .time)")
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.tertiary)
                     .accessibilityLabel("Last updated \(lastUpdated.formatted(date: .omitted, time: .standard))")
@@ -125,13 +120,13 @@ public struct PopoverShellView: View {
     private var entriesContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             if snapshot.knownSessions.isEmpty == false {
-                EntrySection(title: "Known agent-browser sessions", entries: snapshot.knownSessions, onClose: queueClose)
+                EntrySection(title: "agent-browser sessions", entries: snapshot.knownSessions, onClose: queueClose)
             }
             if snapshot.highConfidenceProcesses.isEmpty == false {
-                EntrySection(title: "Likely Playwright/Puppeteer browsers", entries: snapshot.highConfidenceProcesses, onClose: queueClose)
+                EntrySection(title: "Playwright and Puppeteer browsers", entries: snapshot.highConfidenceProcesses, onClose: queueClose)
             }
             if snapshot.lowConfidenceProcesses.isEmpty == false {
-                EntrySection(title: "Possible automation browsers", entries: snapshot.lowConfidenceProcesses, onClose: queueClose)
+                EntrySection(title: "Unconfirmed browsers", entries: snapshot.lowConfidenceProcesses, onClose: queueClose)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -147,7 +142,7 @@ public struct PopoverShellView: View {
     }
 
     private func confirmationTitle(for entry: DetectedEntry) -> String {
-        entry.source == .agentBrowser ? "Close agent-browser session?" : "Terminate browser process?"
+        entry.source == .agentBrowser ? "Close the \(entry.sessionName) session?" : "Close \(entry.displayName)?"
     }
 
     private func queueClose(_ entry: DetectedEntry) {
@@ -168,29 +163,29 @@ public struct PopoverShellView: View {
         case .success:
             return "Closed \(entry.displayName)."
         case .notClosable:
-            return "This row is inspect-only and cannot be closed."
+            return "This browser can't be closed from here."
         case .staleTarget:
-            return "The target changed or disappeared before close; no action was taken."
+            return "The browser exited or its PID now belongs to another process. Nothing was closed."
         case .unavailable(let reason):
-            return "Close unavailable: \(reason)"
+            return "Couldn't close: \(reason)"
         case .failed(let message):
-            return "Close failed: \(message)"
+            return "Couldn't close: \(message)"
         }
     }
 
     private func confirmationButtonTitle(for entry: DetectedEntry) -> String {
-        entry.source == .agentBrowser ? "Close Session" : "Terminate PID \(entry.processIdentity?.pid ?? 0)"
+        entry.source == .agentBrowser ? "Close Session" : "Close Browser"
     }
 
     private func confirmationMessage(for entry: DetectedEntry) -> String {
         switch entry.source {
         case .agentBrowser:
-            return "This will ask agent-browser to close the \(entry.sessionName) session."
+            return "agent-browser closes the browser and ends the session."
         case .process:
             if let pid = entry.processIdentity?.pid {
-                return "This sends SIGTERM to browser PID \(pid) only. The app will revalidate PID identity before terminating."
+                return "Sends SIGTERM to PID \(pid) after checking that the PID still belongs to this browser. The process that launched it keeps running."
             }
-            return "This sends SIGTERM to the browser process only after identity revalidation."
+            return "Sends SIGTERM after checking that the PID still belongs to this browser. The process that launched it keeps running."
         }
     }
 }
@@ -334,7 +329,7 @@ public struct EntryRowView: View {
             return "agent"
         case .process:
             if let pid = entry.processIdentity?.pid { return "#\(pid)" }
-            return entry.confidence == .high ? "high" : "low"
+            return "?"
         }
     }
 
@@ -344,7 +339,7 @@ public struct EntryRowView: View {
         case .agentBrowser:
             EmptyView()
         case .process:
-            Text(entry.confidence == .high ? "high" : "inspect only")
+            Text(entry.confidence == .high ? "automated" : "view only")
                 .badgeStyle(tint: entry.confidence == .high ? .orange : .gray)
         }
     }
@@ -355,7 +350,7 @@ public struct EntryRowView: View {
                 Label(parentProcessSummary, systemImage: "terminal")
                     .lineLimit(1)
             } else if entry.source == .agentBrowser {
-                Label("managed session", systemImage: "globe")
+                Label("agent-browser", systemImage: "globe")
                     .lineLimit(1)
             }
 
@@ -412,44 +407,36 @@ public struct EntryRowView: View {
     private var detailGrid: some View {
         if entry.source == .agentBrowser {
             DetailRow(label: "Session", value: entry.sessionName)
-            DetailRow(label: "Manager", value: "agent-browser")
             if let signalReason = entry.signalReason, signalReason.isEmpty == false {
-                DetailRow(label: "Runtime", value: signalReason)
+                DetailRow(label: "Daemon", value: signalReason)
             }
             if let parentProcessSummary = entry.parentProcessSummary {
-                DetailRow(label: "Agent", value: parentProcessSummary)
+                DetailRow(label: "Command", value: parentProcessSummary)
             }
             if let identity = entry.processIdentity {
-                DetailRow(label: "Browser PID", value: "\(identity.pid)")
+                DetailRow(label: "Browser", value: "\(identity.executableBasename), PID \(identity.pid)")
                 DetailRow(label: "Started", value: identity.startTime == .distantPast ? "unknown" : identity.startTime.formatted(date: .abbreviated, time: .standard))
-                DetailRow(label: "Age", value: relativeAge(since: identity.startTime))
-                DetailRow(label: "Executable", value: identity.executableBasename)
             }
-            DetailRow(label: "Close", value: "Uses agent-browser session close")
         } else if let identity = entry.processIdentity {
-            DetailRow(label: "PID", value: "\(identity.pid)")
+            DetailRow(label: "Browser", value: "\(identity.executableBasename), PID \(identity.pid)")
             DetailRow(label: "Started", value: identity.startTime == .distantPast ? "unknown" : identity.startTime.formatted(date: .abbreviated, time: .standard))
-            DetailRow(label: "Age", value: relativeAge(since: identity.startTime))
-            DetailRow(label: "Confidence", value: entry.confidence == .high ? "high — close allowed" : "low — inspect only")
             if let parentProcessSummary = entry.parentProcessSummary {
-                DetailRow(label: "Parent", value: parentProcessSummary)
+                DetailRow(label: "Launched by", value: parentProcessSummary)
             }
             if let signalReason = entry.signalReason, signalReason.isEmpty == false {
-                DetailRow(label: "Signal", value: signalReason)
+                DetailRow(label: "Found by", value: signalReason)
             }
-            DetailRow(label: "Executable", value: identity.executableBasename)
-            DetailRow(label: "Close", value: entry.isClosable ? "Sends SIGTERM to browser PID after identity revalidation" : "Disabled for low-confidence process rows")
         }
     }
 
     private var safetyCopy: String {
         if entry.source == .agentBrowser {
-            return "Asks agent-browser to close this session."
+            return "Close asks agent-browser to end this session."
         }
         if entry.isClosable {
-            return "Close targets browser PID only and revalidates first."
+            return "Close stops this browser and leaves the process that launched it running."
         }
-        return "Inspect-only: low-confidence rows cannot be closed."
+        return "No Playwright or Puppeteer flags found, so this browser can't be closed from here."
     }
 
     private func relativeAge(since date: Date) -> String {
@@ -474,12 +461,12 @@ public struct EntryRowView: View {
         var parts = [entry.displayName]
         switch entry.source {
         case .agentBrowser:
-            parts.append("known agent-browser session")
+            parts.append("agent-browser session")
         case .process:
-            parts.append(entry.confidence == .high ? "high confidence process" : "inspect-only possible automation process")
+            parts.append(entry.confidence == .high ? "Playwright or Puppeteer browser" : "unconfirmed browser")
             if let pid = entry.processIdentity?.pid { parts.append("PID \(pid)") }
         }
-        if entry.isClosable { parts.append("closable") } else { parts.append("no close action") }
+        parts.append(entry.isClosable ? "can be closed" : "view only")
         return parts.joined(separator: ", ")
     }
 }
@@ -517,7 +504,7 @@ private struct DegradationBanner: View {
         }
         .padding(8)
         .background(.yellow.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-        .accessibilityLabel("Reduced detection capability: \(reason)")
+        .accessibilityLabel("agent-browser sessions unavailable: \(reason)")
     }
 }
 
@@ -543,9 +530,9 @@ public struct ZeroStateView: View {
             Image(systemName: "globe.badge.chevron.backward")
                 .font(.title2)
                 .foregroundStyle(.secondary)
-            Text("No automation browsers detected")
+            Text("No automation browsers running")
                 .font(.headline)
-            Text("Polling continues in the background.")
+            Text("Checks again every 5 seconds.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

@@ -92,8 +92,8 @@ public struct DetectionEngine: Sendable {
             guard let sessionMetadata = metadata[entry.sessionName] else { return entry }
             var details: [String] = []
             if let engine = sessionMetadata.engine { details.append("engine \(engine)") }
-            details.append("agent PID \(sessionMetadata.agentPID)")
-            if let streamPort = sessionMetadata.streamPort { details.append("stream \(streamPort)") }
+            details.append("PID \(sessionMetadata.agentPID)")
+            if let streamPort = sessionMetadata.streamPort { details.append("stream port \(streamPort)") }
             return DetectedEntry.agentBrowserSession(
                 name: entry.sessionName,
                 processIdentity: sessionMetadata.browserIdentity,

@@ -81,7 +81,7 @@ private func testDetectionEngineEnrichesKnownSessionWithProcessMetadata(_ harnes
     let known = snapshot.knownSessions.first
     harness.expectEqual(known?.processIdentity?.pid, 321, "known session carries browser pid")
     harness.expectEqual(known?.parentProcessSummary, "agent-browser daemon", "known session carries agent process summary")
-    harness.expect(known?.signalReason?.contains("agent PID 320") == true, "known session carries agent pid detail")
+    harness.expect(known?.signalReason?.contains("PID 320") == true, "known session carries daemon pid detail")
     harness.expect(known?.signalReason?.contains("engine chrome") == true, "known session carries engine detail")
 }
 
