@@ -47,6 +47,7 @@ struct BrowserSessionsApp: App {
 /// menu bar label depend on `snapshot` only and redraw only when detection results change.
 private struct PopoverContent: View {
     let monitor: SessionMonitor
+    @State private var contentHeight: CGFloat = 0
 
     var body: some View {
         PopoverShellView(
@@ -67,5 +68,7 @@ private struct PopoverContent: View {
                 NSApp.terminate(nil)
             }
         )
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+        .background(WindowHeightFitter(contentHeight: contentHeight))
     }
 }

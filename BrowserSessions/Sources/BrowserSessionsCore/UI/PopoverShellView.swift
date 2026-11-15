@@ -113,18 +113,13 @@ public struct PopoverShellView: View {
     }
 
     private var entriesList: some View {
+        // Measured with onGeometryChange: a preference set inside a macOS ScrollView never reaches
+        // the outside, which left the list stuck at its initial height.
         ScrollView {
             entriesContent
-                .background(
-                    GeometryReader { proxy in
-                        Color.clear.preference(key: EntriesContentHeightKey.self, value: proxy.size.height)
-                    }
-                )
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { entriesContentHeight = $0 }
         }
         .frame(height: popoverListHeight)
-        .onPreferenceChange(EntriesContentHeightKey.self) { height in
-            entriesContentHeight = height
-        }
     }
 
     private var entriesContent: some View {
@@ -143,7 +138,7 @@ public struct PopoverShellView: View {
     }
 
     private var popoverListHeight: CGFloat {
-        min(max(entriesContentHeight, 120), popoverListMaxHeight)
+        min(entriesContentHeight, popoverListMaxHeight)
     }
 
     private var popoverListMaxHeight: CGFloat {
@@ -197,14 +192,6 @@ public struct PopoverShellView: View {
             }
             return "This sends SIGTERM to the browser process only after identity revalidation."
         }
-    }
-}
-
-private struct EntriesContentHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 220
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
     }
 }
 
