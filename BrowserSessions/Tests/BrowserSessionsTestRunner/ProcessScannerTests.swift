@@ -5,6 +5,19 @@ import BrowserSessionsCore
 func runProcessScannerTests(_ harness: inout TestHarness) async {
     testScannerListsEachBrowserOnce(&harness)
     testScannerToleratesDuplicatePIDs(&harness)
+    testLauncherNames(&harness)
+}
+
+@MainActor
+private func testLauncherNames(_ harness: inout TestHarness) {
+    func launcher(_ parent: String?) -> String? {
+        DetectedEntry(id: "x", source: .process, sessionName: "x", parentProcessSummary: parent).launcherName
+    }
+    harness.expectEqual(launcher("/usr/local/bin/node node_modules/.bin/playwright test a.spec.ts"), "playwright", "interpreter runs a script: name the script")
+    harness.expectEqual(launcher("node --inspect /srv/run-tests.mjs"), "run-tests", "interpreter flags are skipped")
+    harness.expectEqual(launcher("chrome-devtools-mcp"), "chrome-devtools-mcp", "plain program name")
+    harness.expectEqual(launcher("/bin/zsh -l"), "zsh", "path is reduced to the program")
+    harness.expectEqual(launcher(nil), nil, "no parent, no launcher")
 }
 
 @MainActor

@@ -28,7 +28,7 @@ Expected: count equals total rows across all sections.
    - Playwright and Puppeteer browsers
    - Unconfirmed browsers
 
-Expected: each row shows the browser's app icon. Closable rows have a ⊗ button at the right edge; unconfirmed rows show `view only` and a dimmed icon.
+Expected: each row shows the browser's app icon and a "launcher · age" subtitle. Hovering a closable row highlights it and shows a ⊗ button left of the chevron; it also shows while the row is expanded. Unconfirmed rows show `view only`, a dimmed icon and no ⊗.
 
 ## AE3 / AE10 — Zero-state and hide behavior
 
@@ -78,7 +78,7 @@ Expected: LOW row is visible, shows `view only`, and has no ⊗ button.
 
 ## AE8 — Cancel confirmation
 
-1. Click the ⊗ button on a closable row.
+1. Hover a closable row and click its ⊗ button.
 2. Click `Cancel` in the inline confirmation.
 
 Expected: only the confirmation panel closes; the popover remains open and no close action runs.
@@ -87,7 +87,7 @@ Expected: only the confirmation panel closes; the popover remains open and no cl
 
 Use VoiceOver or Accessibility Inspector on representative rows.
 
-Expected: row labels name the section (agent-browser session, Playwright or Puppeteer browser, unconfirmed browser), the PID when present, and "can be closed" or "view only". Each closable row also has a "Close <name>" button.
+Expected: row labels name the section (agent-browser session, Playwright or Puppeteer browser, unconfirmed browser), the PID when present, and "can be closed" or "view only". Closable rows offer a "Close" action in the VoiceOver Actions menu (VO-Command-Space), since the ⊗ button is hidden until hover.
 
 ## AE11 — Degraded CLI state
 

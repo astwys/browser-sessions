@@ -101,8 +101,9 @@ public struct PopoverShellView: View {
                 Button("Quit") {
                     onQuit()
                 }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
                 .keyboardShortcut("q")
-                .controlSize(.small)
                 .accessibilityLabel("Quit Browser Sessions")
             }
         }
@@ -239,13 +240,8 @@ private struct EntrySection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(title)
-                Spacer()
-                Text("\(entries.count)")
-                    .monospacedDigit()
-            }
-            .font(.caption.weight(.semibold))
+            Text(title)
+                .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
             .padding(.horizontal, 8)
             .padding(.bottom, 2)
@@ -260,6 +256,7 @@ public struct EntryRowView: View {
     public let entry: DetectedEntry
     private let onClose: (DetectedEntry) -> Void
     @State private var isExpanded = false
+    @State private var isHovered = false
 
     public init(entry: DetectedEntry, onClose: @escaping (DetectedEntry) -> Void = { _ in }) {
         self.entry = entry
@@ -276,18 +273,15 @@ public struct EntryRowView: View {
         }
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(.quaternary.opacity(isExpanded ? 0.6 : 0))
+                .fill(.quaternary.opacity(isExpanded ? 0.6 : isHovered ? 0.4 : 0))
         )
+        .onHover { isHovered = $0 }
         .accessibilityElement(children: .contain)
     }
 
     private var compactRow: some View {
         HStack(spacing: 6) {
-            Button {
-                withAnimation(.snappy(duration: 0.16)) {
-                    isExpanded.toggle()
-                }
-            } label: {
+            Button(action: toggleExpanded) {
                 HStack(spacing: 10) {
                     BrowserIcon(executablePath: entry.processIdentity?.executablePath)
                         .opacity(entry.isClosable ? 1 : 0.5)
@@ -302,57 +296,69 @@ public struct EntryRowView: View {
                                     .foregroundStyle(.tertiary)
                             }
                         }
-                        compactMetadata
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                     Spacer(minLength: 4)
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(accessibilityLabel)
             .accessibilityHint(isExpanded ? "Collapse details" : "Expand details")
-
-            Button {
-                onClose(entry)
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.body)
-                    .foregroundStyle(.tertiary)
+            .accessibilityActions {
+                if entry.isClosable {
+                    Button("Close") { onClose(entry) }
+                }
             }
-            .buttonStyle(.plain)
-            .help("Close \(entry.displayName)")
-            .accessibilityLabel("Close \(entry.displayName)")
-            // Always visible: a menu bar app is not the active app, so hover tracking in its popover
-            // does not fire. Unconfirmed rows keep the slot empty so the chevrons line up.
-            .opacity(entry.isClosable ? 1 : 0)
-            .disabled(entry.isClosable == false)
-            .accessibilityHidden(entry.isClosable == false)
+
+            if entry.isClosable {
+                // Shown on hover or while expanded, like the close buttons in Notification Center.
+                // A hidden button leaves the accessibility tree, so VoiceOver gets Close as a row action.
+                Button {
+                    onClose(entry)
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Close \(entry.displayName)")
+                .accessibilityLabel("Close \(entry.displayName)")
+                .opacity(showsClose ? 1 : 0)
+                .allowsHitTesting(showsClose)
+            }
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                .frame(width: 12)
+                .contentShape(Rectangle())
+                .onTapGesture(perform: toggleExpanded)
+                .accessibilityHidden(true)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
     }
 
-    private var compactMetadata: some View {
-        HStack(spacing: 8) {
-            if let parentProcessSummary = entry.parentProcessSummary {
-                Label(parentProcessSummary, systemImage: "terminal")
-                    .lineLimit(1)
-            } else if entry.source == .agentBrowser {
-                Label("agent-browser", systemImage: "globe")
-                    .lineLimit(1)
-            }
+    private var showsClose: Bool {
+        isHovered || isExpanded
+    }
 
-            if let identity = entry.processIdentity {
-                Label(relativeAge(since: identity.startTime), systemImage: "clock")
-            }
+    private func toggleExpanded() {
+        withAnimation(.snappy(duration: 0.16)) {
+            isExpanded.toggle()
         }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .labelStyle(.titleAndIcon)
+    }
+
+    /// "playwright · 13m": what started the browser and how long ago. The full command is in the details.
+    private var subtitle: String {
+        let launcher = entry.launcherName ?? (entry.source == .agentBrowser ? "agent-browser" : nil)
+        let age = entry.processIdentity.map { relativeAge(since: $0.startTime) }
+        return [launcher, age].compactMap { $0 }.joined(separator: " · ")
     }
 
     /// Indented to line up with the row's text, past the 28 pt icon.

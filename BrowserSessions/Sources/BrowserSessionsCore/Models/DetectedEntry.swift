@@ -38,6 +38,19 @@ public struct DetectedEntry: Equatable, Sendable, Identifiable {
         self.signalReason = signalReason
     }
 
+    /// The program that started this browser, from its parent's command line: "zsh", "chrome-devtools-mcp",
+    /// or for a script run by an interpreter, the script ("playwright" for `node …/.bin/playwright test`).
+    public var launcherName: String? {
+        let words = parentProcessSummary?.split(separator: " ").map(String.init) ?? []
+        guard let first = words.first else { return nil }
+        let program = URL(fileURLWithPath: first).lastPathComponent
+        let interpreters: Set<String> = ["node", "bun", "deno", "python", "python3"]
+        if interpreters.contains(program), let script = words.dropFirst().first(where: { $0.hasPrefix("-") == false }) {
+            return URL(fileURLWithPath: script).deletingPathExtension().lastPathComponent
+        }
+        return program
+    }
+
     public var isClosable: Bool {
         source == .agentBrowser || confidence?.isClosable == true
     }
