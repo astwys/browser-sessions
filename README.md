@@ -1,78 +1,33 @@
 # Browser Sessions
 
-macOS menu bar app to supervise automation browser sessions (`agent-browser`, Playwright, Puppeteer).
+A macOS menu bar app that lists the automation browsers running on your Mac and lets you close them. It finds agent-browser sessions and the Chrome or Chromium instances that Playwright and Puppeteer start.
 
-## Status
+<img src="docs/images/menu-bar.png" alt="Menu bar item showing a globe and the count 3" width="60">
 
-**U1 complete (scaffold):** SwiftPM menu bar shell with polling timer, hide/zero-state binding, and unit tests.
+The menu bar shows how many browsers are running. The icon hides when there are none.
 
-**U2 complete:** `agent-browser` CLI client with `CommandRunner`, JSON parsing, and graceful degradation.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/popover-dark.png">
+  <img src="docs/images/popover-light.png" alt="Popover listing one agent-browser session, one Playwright browser and one unconfirmed Chrome" width="420">
+</picture>
 
-**U3–U7 complete:** process scanner/classifier, merged live snapshots, three-tier popover, confirmation-based close flow, onboarding, and manual QA checklist.
+## How it finds browsers
 
-Full Xcode is recommended for day-to-day UI work; this repo builds with Swift Package Manager + an app bundle wrapper (Command Line Tools sufficient for U1).
+- It reads your own processes through libproc, every 5 seconds. It never reads their environment variables.
+- Each browser gets one row. Renderer, GPU and other helper processes are skipped.
+- A browser counts as Playwright or Puppeteer when its arguments show it: `--remote-debugging-pipe`, a Playwright profile, or a Puppeteer path with `--enable-automation`. A browser with only `--remote-debugging-port` or `--headless` is listed as unconfirmed and can't be closed from the app.
+- agent-browser sessions come from `agent-browser session list`. The app runs it only when an agent-browser daemon starts or stops.
 
-## Build & run
+Close asks for confirmation. It ends agent-browser sessions with `agent-browser close`. Other browsers get SIGTERM, after the app checks that the PID still belongs to the same browser.
+
+## Build and run
+
+Requires macOS 14 and the Xcode Command Line Tools. agent-browser is optional.
 
 ```bash
 cd BrowserSessions
-swift run BrowserSessionsTestRunner
-./scripts/build-app-bundle.sh
-./scripts/run-app.sh
+swift run BrowserSessionsTestRunner   # run the tests
+./scripts/install-app.sh              # build and copy to /Applications
 ```
 
-Use `./scripts/run-app.sh` (not `open`) when testing env-var modes. With no env vars the icon stays hidden when count is zero — that is expected.
-
-Install a Finder/Spotlight-launchable app:
-
-```bash
-./scripts/install-app.sh
-open /Applications/BrowserSessions.app
-```
-
-The app includes a **Quit Browser Sessions** button in the popover. Finder-launched builds augment `PATH` with common Homebrew/local Node locations so `agent-browser` can be found without launching from a shell.
-
-### Manual QA helpers (U1)
-
-macOS `open` does **not** forward environment variables to the app. Use the run script or invoke the binary directly:
-
-```bash
-# Default — hidden when empty (no icon expected)
-./scripts/run-app.sh
-
-# Badge with stub count
-BROWSER_SESSIONS_STUB_COUNT=3 ./scripts/run-app.sh
-
-# Neutral zero-state (dim globe icon, stays visible when empty)
-BROWSER_SESSIONS_FORCE_ZERO_STATE=1 ./scripts/run-app.sh
-```
-
-To quit a background instance from the terminal: `pkill -x BrowserSessions`
-
-### Tests
-
-```bash
-swift run BrowserSessionsTestRunner
-BROWSER_SESSIONS_INTEGRATION=1 swift run BrowserSessionsTestRunner  # requires agent-browser on PATH
-```
-
-Run all three visibility cases in sequence:
-
-```bash
-./scripts/qa-menu-bar.sh
-```
-
-Manual UI acceptance checks live in `docs/qa/manual-ae-checklist.md`. Use them before calling v1 complete, especially for menu bar hide/show, live popover refresh, confirmation behavior, and VoiceOver spot checks.
-
-Add `BROWSER_SESSIONS_DEBUG=1` to any launch command to print menu bar state to the terminal.
-
-## Docs
-
-- Requirements: `docs/brainstorms/2026-06-21-automation-browser-menu-bar-requirements.md`
-- Plan: `docs/plans/2026-06-21-001-feat-automation-browser-menu-bar-plan.md`
-- Manual QA checklist: `docs/qa/manual-ae-checklist.md`
-
-## Dependencies
-
-- macOS 14+
-- [`agent-browser`](https://github.com/vercel-labs/agent-browser) (from U2 onward)
+`./restart-app.sh` in the repo root rebuilds, reinstalls and relaunches the app. `BROWSER_SESSIONS_STUB_COUNT=3 ./scripts/run-app.sh` shows a fake count. Manual UI checks are in `docs/qa/manual-ae-checklist.md`.
