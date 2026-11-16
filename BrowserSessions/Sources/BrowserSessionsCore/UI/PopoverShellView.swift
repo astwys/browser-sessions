@@ -1,28 +1,32 @@
 import AppKit
 import SwiftUI
 
+public extension Animation {
+    /// The one motion in the popover: a row opening, a banner or row arriving or leaving, and the window
+    /// following its content. 200 ms on a strong ease-out, so everything that moves for one change
+    /// moves as one object. Hover and the close button stay instant: they change tens of times a day.
+    static let popover = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.2)
+}
+
 public struct PopoverShellView: View {
     public let snapshot: DetectionSnapshot
     public let lastUpdated: Date
-    public let isRefreshing: Bool
     private let closeCoordinator: CloseCoordinator
     private let onCloseCompleted: @Sendable () async -> Void
     private let onQuit: () -> Void
     @State private var pendingCloseEntry: DetectedEntry?
     @State private var closeStatusMessage: String?
-    @State private var entriesContentHeight: CGFloat = 220
+    @State private var entriesContentHeight: CGFloat?
 
     public init(
         snapshot: DetectionSnapshot,
         lastUpdated: Date = Date(),
-        isRefreshing: Bool = false,
         closeCoordinator: CloseCoordinator = CloseCoordinator(),
         onCloseCompleted: @escaping @Sendable () async -> Void = {},
         onQuit: @escaping () -> Void = {}
     ) {
         self.snapshot = snapshot
         self.lastUpdated = lastUpdated
-        self.isRefreshing = isRefreshing
         self.closeCoordinator = closeCoordinator
         self.onCloseCompleted = onCloseCompleted
         self.onQuit = onQuit
@@ -44,7 +48,7 @@ public struct PopoverShellView: View {
                     message: confirmationMessage(for: pendingCloseEntry),
                     confirmTitle: confirmationButtonTitle(for: pendingCloseEntry),
                     onConfirm: { Task { await performClose(pendingCloseEntry) } },
-                    onCancel: { self.pendingCloseEntry = nil }
+                    onCancel: { withAnimation(.popover) { self.pendingCloseEntry = nil } }
                 )
             }
             if snapshot.totalCount == 0 {
@@ -56,11 +60,12 @@ public struct PopoverShellView: View {
         }
         .padding(14)
         .frame(minWidth: 360, idealWidth: 420, maxWidth: 480)
+        .animation(.popover, value: snapshot)
         .task(id: closeStatusMessage) {
             guard let message = closeStatusMessage else { return }
             try? await Task.sleep(for: .seconds(4))
             if closeStatusMessage == message {
-                closeStatusMessage = nil
+                withAnimation(.popover) { closeStatusMessage = nil }
             }
         }
     }
@@ -70,18 +75,10 @@ public struct PopoverShellView: View {
             Text("Browser Sessions")
                 .font(.headline)
             Spacer()
-            VStack(alignment: .trailing, spacing: 2) {
-                if isRefreshing {
-                    Text("Refreshing…")
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .transition(.opacity)
-                }
-                Text("Updated \(lastUpdated, style: .time)")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.tertiary)
-                    .accessibilityLabel("Last updated \(lastUpdated.formatted(date: .omitted, time: .standard))")
-            }
+            Text("Updated \(lastUpdated, style: .time)")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.tertiary)
+                .accessibilityLabel("Last updated \(lastUpdated.formatted(date: .omitted, time: .standard))")
         }
         .padding(.horizontal, 8)
     }
@@ -108,7 +105,10 @@ public struct PopoverShellView: View {
         // the outside, which left the list stuck at its initial height.
         ScrollView {
             entriesContent
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { entriesContentHeight = $0 }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                    // Grows and shrinks with the rows inside it, on the same curve. The first size is set as is.
+                    withAnimation(entriesContentHeight == nil ? nil : .popover) { entriesContentHeight = height }
+                }
         }
         .frame(height: popoverListHeight)
     }
@@ -129,7 +129,7 @@ public struct PopoverShellView: View {
     }
 
     private var popoverListHeight: CGFloat {
-        min(entriesContentHeight, popoverListMaxHeight)
+        min(entriesContentHeight ?? 220, popoverListMaxHeight)
     }
 
     private var popoverListMaxHeight: CGFloat {
@@ -142,15 +142,17 @@ public struct PopoverShellView: View {
     }
 
     private func queueClose(_ entry: DetectedEntry) {
-        closeStatusMessage = nil
-        pendingCloseEntry = entry
+        withAnimation(.popover) {
+            closeStatusMessage = nil
+            pendingCloseEntry = entry
+        }
     }
 
     @MainActor
     private func performClose(_ entry: DetectedEntry) async {
-        pendingCloseEntry = nil
+        withAnimation(.popover) { pendingCloseEntry = nil }
         let outcome = await closeCoordinator.close(entry)
-        closeStatusMessage = statusMessage(for: outcome, entry: entry)
+        withAnimation(.popover) { closeStatusMessage = statusMessage(for: outcome, entry: entry) }
         await onCloseCompleted()
     }
 
@@ -261,14 +263,21 @@ public struct EntryRowView: View {
         VStack(alignment: .leading, spacing: 0) {
             compactRow
             if isExpanded {
+                // Fades in place while the row grows around it; the clip below reveals it from the top.
                 expandedDetails
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity)
             }
         }
         .background(
             RoundedRectangle(cornerRadius: 6)
                 .fill(.quaternary.opacity(isExpanded ? 0.6 : isHovered ? 0.4 : 0))
         )
+        // A plain rectangle: a rounded clipShape masks the row, and text redrawn under that mask loses
+        // the popover's vibrancy and shows dark until the next full redraw.
+        .clipped()
+        // The row moves as one unit. Without it SwiftUI animates each text on its own, and a subtitle
+        // whose age ticks over on a poll mid-move jumps to its end position, outside the clip.
+        .geometryGroup()
         .onHover { isHovered = $0 }
         .accessibilityElement(children: .contain)
     }
@@ -343,7 +352,7 @@ public struct EntryRowView: View {
     }
 
     private func toggleExpanded() {
-        withAnimation(.snappy(duration: 0.16)) {
+        withAnimation(.popover) {
             isExpanded.toggle()
         }
     }

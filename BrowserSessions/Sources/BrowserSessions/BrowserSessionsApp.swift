@@ -39,17 +39,17 @@ struct BrowserSessionsApp: App {
     }
 }
 
-/// Reads the per-poll state (`lastUpdated`, `isRefreshing`) in its own view, so the scene body and the
-/// menu bar label depend on `snapshot` only and redraw only when detection results change.
+/// Reads the per-poll state (`lastUpdated`) in its own view, so the scene body and the menu bar label
+/// depend on `snapshot` only and redraw only when detection results change.
 private struct PopoverContent: View {
     let monitor: SessionMonitor
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var contentHeight: CGFloat = 0
 
     var body: some View {
         PopoverShellView(
             snapshot: monitor.snapshot,
             lastUpdated: monitor.lastUpdated,
-            isRefreshing: monitor.isRefreshing,
             onCloseCompleted: {
                 await monitor.pollOnce()
             },
@@ -57,7 +57,13 @@ private struct PopoverContent: View {
                 NSApp.terminate(nil)
             }
         )
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
-        .background(WindowHeightFitter(contentHeight: contentHeight))
+        .fixedSize(horizontal: false, vertical: true)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+            // The first size, when the popover opens, is set as is; later ones follow the content.
+            withAnimation(contentHeight == 0 ? nil : .popover) { contentHeight = height }
+        }
+        .fitsWindowHeight(contentHeight)
+        // Reduce Motion: every change in the popover lands at once, window included.
+        .transaction { if reduceMotion { $0.animation = nil } }
     }
 }

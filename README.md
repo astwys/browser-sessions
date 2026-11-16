@@ -6,9 +6,11 @@ A macOS menu bar app that lists the automation browsers running on your Mac and 
 
 The menu bar shows how many browsers are running. The icon hides when there are none.
 
+Click a row to see the process behind it: PIDs, start time and the command that launched it.
+
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/popover-dark.png">
-  <img src="docs/images/popover-light.png" alt="Popover listing one agent-browser session, one Playwright browser and one unconfirmed Chrome" width="420">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/popover-dark.gif">
+  <img src="docs/images/popover-light.gif" alt="Popover listing one agent-browser session, one Playwright browser and one unconfirmed Chrome. The agent-browser row opens to show its details, then closes." width="420">
 </picture>
 
 ## How it finds browsers

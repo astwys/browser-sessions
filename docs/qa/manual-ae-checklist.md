@@ -112,6 +112,13 @@ Verify examples against expected UI:
 - Renderer/GPU/utility helpers of a listed browser → not listed (one row per browser)
 - `chrome-devtools-mcp` Node server → not listed; the Chrome it drives → one HIGH row
 
+## AE14 — Motion
+
+1. Open a row, close it, then close a session and wait for its status message to disappear.
+2. Turn on System Settings → Accessibility → Display → Reduce motion and repeat.
+
+Expected: each change moves in about 200 ms, with no bounce. The popover's bottom edge and Quit move with the rows, never ahead of them or after. Opening details fade in place; nothing slides. Subtitles stay under their titles even when a 5-second refresh lands mid-move. Hover and the ⊗ button appear instantly. With Reduce motion on, every change is instant, window included.
+
 ## Completion note
 
 Before calling v1 complete, report which AE sections were manually verified and any observed macOS version-specific behavior.
