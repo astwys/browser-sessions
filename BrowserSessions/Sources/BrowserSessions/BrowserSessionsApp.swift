@@ -36,10 +36,6 @@ struct BrowserSessionsApp: App {
                 MenuBarDiagnostics.logVisibilityChange(count: count, inserted: inserted)
             }
         }
-
-        Settings {
-            PermissionsOnboardingView()
-        }
     }
 }
 
@@ -56,13 +52,6 @@ private struct PopoverContent: View {
             isRefreshing: monitor.isRefreshing,
             onCloseCompleted: {
                 await monitor.pollOnce()
-            },
-            onRefresh: {
-                await monitor.pollOnce()
-            },
-            onOpenSettings: {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                NSApp.activate(ignoringOtherApps: true)
             },
             onQuit: {
                 NSApp.terminate(nil)

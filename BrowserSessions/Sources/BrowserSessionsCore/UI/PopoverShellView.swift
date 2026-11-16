@@ -7,8 +7,6 @@ public struct PopoverShellView: View {
     public let isRefreshing: Bool
     private let closeCoordinator: CloseCoordinator
     private let onCloseCompleted: @Sendable () async -> Void
-    private let onRefresh: @Sendable () async -> Void
-    private let onOpenSettings: () -> Void
     private let onQuit: () -> Void
     @State private var pendingCloseEntry: DetectedEntry?
     @State private var closeStatusMessage: String?
@@ -20,8 +18,6 @@ public struct PopoverShellView: View {
         isRefreshing: Bool = false,
         closeCoordinator: CloseCoordinator = CloseCoordinator(),
         onCloseCompleted: @escaping @Sendable () async -> Void = {},
-        onRefresh: @escaping @Sendable () async -> Void = {},
-        onOpenSettings: @escaping () -> Void = {},
         onQuit: @escaping () -> Void = {}
     ) {
         self.snapshot = snapshot
@@ -29,8 +25,6 @@ public struct PopoverShellView: View {
         self.isRefreshing = isRefreshing
         self.closeCoordinator = closeCoordinator
         self.onCloseCompleted = onCloseCompleted
-        self.onRefresh = onRefresh
-        self.onOpenSettings = onOpenSettings
         self.onQuit = onQuit
     }
 
