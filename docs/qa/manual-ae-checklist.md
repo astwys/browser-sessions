@@ -24,11 +24,11 @@ Expected: count equals total rows across all sections.
 
 1. Open the menu bar popover.
 2. Verify sections exist:
-   - Known agent-browser sessions
-   - Likely Playwright/Puppeteer browsers
-   - Possible automation browsers
+   - agent-browser sessions
+   - Playwright and Puppeteer browsers
+   - Unconfirmed browsers
 
-Expected: known rows show `known`; high rows show `high confidence`; low rows show `inspect only`.
+Expected: each row shows the browser's app icon. Closable rows have a ⊗ button at the right edge; unconfirmed rows show `view only` and a dimmed icon.
 
 ## AE3 / AE10 — Zero-state and hide behavior
 
@@ -68,17 +68,17 @@ Expected: the confirmation stays inside the popover, close runs, a status messag
 2. Click `Close`.
 3. Confirm.
 
-Expected: copy says SIGTERM targets the browser PID only and revalidates first. The owning Node/test process must remain alive.
+Expected: copy says SIGTERM goes to this browser after the app checks the PID still belongs to it. The owning Node/test process must remain alive.
 
 ## AE7 — LOW rows are inspect-only
 
 Create or observe a LOW row such as Chrome with `--remote-debugging-port=9222` only.
 
-Expected: LOW row is visible but has no Close button.
+Expected: LOW row is visible, shows `view only`, and has no ⊗ button.
 
 ## AE8 — Cancel confirmation
 
-1. Click `Close` on a closable row.
+1. Click the ⊗ button on a closable row.
 2. Click `Cancel` in the inline confirmation.
 
 Expected: only the confirmation panel closes; the popover remains open and no close action runs.
@@ -87,7 +87,7 @@ Expected: only the confirmation panel closes; the popover remains open and no cl
 
 Use VoiceOver or Accessibility Inspector on representative rows.
 
-Expected: labels mention known/high/inspect-only state and PID when present.
+Expected: row labels name the section (agent-browser session, Playwright or Puppeteer browser, unconfirmed browser), the PID when present, and "can be closed" or "view only". Each closable row also has a "Close <name>" button.
 
 ## AE11 — Degraded CLI state
 
@@ -105,9 +105,9 @@ Expected: within one poll/refresh, count drops to zero and empty state appears w
 
 Verify examples against expected UI:
 
-- Playwright `--remote-debugging-pipe` → HIGH / closable
-- Puppeteer cache + `--enable-automation` → HIGH / closable
-- `--remote-debugging-port=9222` only → LOW / inspect-only
+- Playwright `--remote-debugging-pipe` → Playwright and Puppeteer section, closable
+- Puppeteer cache + `--enable-automation` → Playwright and Puppeteer section, closable
+- `--remote-debugging-port=9222` only → Unconfirmed section, view only
 - `chrome_crashpad_handler` → not listed
 - Renderer/GPU/utility helpers of a listed browser → not listed (one row per browser)
 - `chrome-devtools-mcp` Node server → not listed; the Chrome it drives → one HIGH row

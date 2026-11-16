@@ -89,6 +89,7 @@ public struct PopoverShellView: View {
                     .accessibilityLabel("Last updated \(lastUpdated.formatted(date: .omitted, time: .standard))")
             }
         }
+        .padding(.horizontal, 8)
     }
 
     private var footer: some View {
@@ -237,15 +238,17 @@ private struct EntrySection: View {
     let onClose: (DetectedEntry) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Text(title)
-                    .font(.subheadline.weight(.semibold))
                 Spacer()
                 Text("\(entries.count)")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.bottom, 2)
             ForEach(entries) { entry in
                 EntryRowView(entry: entry, onClose: onClose)
             }
@@ -265,83 +268,72 @@ public struct EntryRowView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Button {
-                withAnimation(.snappy(duration: 0.16)) {
-                    isExpanded.toggle()
-                }
-            } label: {
-                compactRow
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(accessibilityLabel)
-            .accessibilityHint(isExpanded ? "Collapse details" : "Expand details")
-
+            compactRow
             if isExpanded {
                 expandedDetails
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background(.quaternary.opacity(0.28), in: RoundedRectangle(cornerRadius: 10))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(.quaternary.opacity(isExpanded ? 0.8 : 0.35), lineWidth: 1)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(.quaternary.opacity(isExpanded ? 0.6 : 0))
         )
         .accessibilityElement(children: .contain)
     }
 
     private var compactRow: some View {
-        HStack(alignment: .center, spacing: 10) {
-            sourceAnchor
-                .frame(width: 64, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(entry.displayName)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    confidenceBadge
+        HStack(spacing: 6) {
+            Button {
+                withAnimation(.snappy(duration: 0.16)) {
+                    isExpanded.toggle()
                 }
-                compactMetadata
+            } label: {
+                HStack(spacing: 10) {
+                    BrowserIcon(executablePath: entry.processIdentity?.executablePath)
+                        .opacity(entry.isClosable ? 1 : 0.5)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text(entry.displayName)
+                                .font(.body.weight(.medium))
+                                .lineLimit(1)
+                            if entry.isClosable == false {
+                                Text("view only")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                        compactMetadata
+                    }
+                    Spacer(minLength: 4)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityHint(isExpanded ? "Collapse details" : "Expand details")
 
-            Spacer(minLength: 8)
-            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
-                .accessibilityHidden(true)
+            Button {
+                onClose(entry)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.body)
+                    .foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.plain)
+            .help("Close \(entry.displayName)")
+            .accessibilityLabel("Close \(entry.displayName)")
+            // Always visible: a menu bar app is not the active app, so hover tracking in its popover
+            // does not fire. Unconfirmed rows keep the slot empty so the chevrons line up.
+            .opacity(entry.isClosable ? 1 : 0)
+            .disabled(entry.isClosable == false)
+            .accessibilityHidden(entry.isClosable == false)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .contentShape(Rectangle())
-    }
-
-    private var sourceAnchor: some View {
-        Text(anchorText)
-            .font(.callout.monospacedDigit().weight(.semibold))
-            .foregroundStyle(color)
-            .lineLimit(1)
-    }
-
-    private var anchorText: String {
-        switch entry.source {
-        case .agentBrowser:
-            return "agent"
-        case .process:
-            if let pid = entry.processIdentity?.pid { return "#\(pid)" }
-            return "?"
-        }
-    }
-
-    @ViewBuilder
-    private var confidenceBadge: some View {
-        switch entry.source {
-        case .agentBrowser:
-            EmptyView()
-        case .process:
-            Text(entry.confidence == .high ? "automated" : "view only")
-                .badgeStyle(tint: entry.confidence == .high ? .orange : .gray)
-        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
     }
 
     private var compactMetadata: some View {
@@ -363,44 +355,27 @@ public struct EntryRowView: View {
         .labelStyle(.titleAndIcon)
     }
 
+    /// Indented to line up with the row's text, past the 28 pt icon.
     private var expandedDetails: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Divider()
-                .padding(.leading, 74)
-
-            VStack(alignment: .leading, spacing: 6) {
-                detailGrid
-                if let commandLineSnippet = entry.commandLineSnippet {
-                    Text(commandLineSnippet)
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(3)
-                        .textSelection(.enabled)
-                        .padding(.top, 2)
-                }
+        VStack(alignment: .leading, spacing: 6) {
+            detailGrid
+            if let commandLineSnippet = entry.commandLineSnippet {
+                Text(commandLineSnippet)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(3)
+                    .textSelection(.enabled)
+                    .padding(.top, 2)
             }
-            .padding(.leading, 74)
-            .padding(.trailing, 10)
-
-            HStack(spacing: 8) {
-                Text(safetyCopy)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer()
-                if entry.isClosable {
-                    Button("Close…", role: .destructive) {
-                        onClose(entry)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .accessibilityLabel("Close \(entry.displayName)")
-                }
-            }
-            .padding(.leading, 74)
-            .padding(.trailing, 10)
-            .padding(.bottom, 10)
+            Text(safetyCopy)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 4)
         }
+        .padding(.leading, 46)
+        .padding(.trailing, 10)
+        .padding(.bottom, 10)
     }
 
     @ViewBuilder
@@ -448,13 +423,6 @@ public struct EntryRowView: View {
         let hours = minutes / 60
         if hours < 48 { return "\(hours)h" }
         return "\(hours / 24)d"
-    }
-
-    private var color: Color {
-        switch entry.source {
-        case .agentBrowser: return .accentColor
-        case .process: return entry.confidence == .high ? .orange : .gray
-        }
     }
 
     private var accessibilityLabel: String {
@@ -542,14 +510,37 @@ public struct ZeroStateView: View {
     }
 }
 
-private extension Text {
-    func badgeStyle(tint: Color = .secondary) -> some View {
-        self
-            .font(.caption2.weight(.semibold))
-            .textCase(.uppercase)
-            .foregroundStyle(tint)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(tint.opacity(0.12), in: Capsule())
+/// The app icon of the bundle a browser runs from, or a globe when the executable is unknown.
+private struct BrowserIcon: View {
+    let executablePath: String?
+
+    var body: some View {
+        Group {
+            if let executablePath {
+                Image(nsImage: AppIconCache.icon(forExecutable: executablePath))
+                    .resizable()
+            } else {
+                Image(systemName: "globe")
+                    .resizable()
+                    .foregroundStyle(.secondary)
+                    .padding(4)
+            }
+        }
+        .frame(width: 28, height: 28)
+        .accessibilityHidden(true)
+    }
+}
+
+@MainActor
+private enum AppIconCache {
+    // ponytail: unbounded, but keyed by app bundle, so it holds one entry per installed browser.
+    private static var icons: [String: NSImage] = [:]
+
+    static func icon(forExecutable path: String) -> NSImage {
+        let bundle = path.range(of: ".app/").map { String(path[..<$0.lowerBound]) + ".app" } ?? path
+        if let icon = icons[bundle] { return icon }
+        let icon = NSWorkspace.shared.icon(forFile: bundle)
+        icons[bundle] = icon
+        return icon
     }
 }
