@@ -64,26 +64,43 @@ public enum ProcessTable {
         return String(decoding: path.prefix(Int(length)), as: UTF8.self)
     }
 
-    /// Returns argv joined by spaces. KERN_PROCARGS2 is laid out as argc, the exec path, NUL padding,
-    /// argv, then the environment. The environment is never read: it routinely holds secrets.
     private static func commandLine(pid: Int32, buffer: inout [UInt8]) -> String? {
         var mib = [CTL_KERN, KERN_PROCARGS2, pid]
         var size = buffer.count
         guard sysctl(&mib, 3, &buffer, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return nil }
-        return buffer.withUnsafeBytes { raw in
-            let argc = Int(raw.loadUnaligned(as: Int32.self))
-            var index = MemoryLayout<Int32>.size
+        return buffer.prefix(size).withUnsafeBytes { arguments(procArgs: $0) }.joined(separator: " ")
+    }
+
+    /// argv from a KERN_PROCARGS2 buffer: argc, the exec path, NUL padding, argv, then the environment.
+    /// The environment is never read: it routinely holds secrets. argc alone doesn't guarantee that. A
+    /// process that rewrites its title (Node's `process.title`) writes over the space its other arguments
+    /// used, so reading argc strings runs on into the environment. Reading stops at the first `NAME=value`
+    /// string after argv[0], the shape of every environment entry.
+    public static func arguments(procArgs raw: UnsafeRawBufferPointer) -> [String] {
+        guard raw.count > MemoryLayout<Int32>.size else { return [] }
+        let argc = Int(raw.loadUnaligned(as: Int32.self))
+        let size = raw.count
+        var index = MemoryLayout<Int32>.size
+        while index < size, raw[index] != 0 { index += 1 }
+        while index < size, raw[index] == 0 { index += 1 }
+        var arguments: [String] = []
+        while arguments.count < argc, index < size {
+            let start = index
             while index < size, raw[index] != 0 { index += 1 }
-            while index < size, raw[index] == 0 { index += 1 }
-            var arguments: [String] = []
-            while arguments.count < argc, index < size {
-                let start = index
-                while index < size, raw[index] != 0 { index += 1 }
-                arguments.append(String(decoding: raw[start..<index], as: UTF8.self))
-                index += 1
-            }
-            return arguments.joined(separator: " ")
+            let argument = String(decoding: raw[start..<index], as: UTF8.self)
+            // ponytail: also drops a genuine NAME=value argument and the ones after it, which only shortens
+            // the command shown; detection keys on --flags and paths.
+            if arguments.isEmpty == false, isEnvironmentEntry(argument) { break }
+            arguments.append(argument)
+            index += 1
         }
+        return arguments
+    }
+
+    private static func isEnvironmentEntry(_ string: String) -> Bool {
+        guard let equals = string.firstIndex(of: "="), equals != string.startIndex else { return false }
+        let name = string[..<equals]
+        return name.first.map { $0 == "_" || $0.isLetter } == true && name.allSatisfy { $0 == "_" || $0.isLetter || $0.isNumber }
     }
 
     private static func argumentBuffer() -> [UInt8] {

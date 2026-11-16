@@ -27,4 +27,22 @@ func runProcessTableTests(_ harness: inout TestHarness) async {
     harness.expect(record.map { abs($0.startTime.timeIntervalSinceNow) < 5 } == true, "process table reads start time")
     harness.expect(ProcessTable.all().contains { $0.pid == pid }, "full table includes the spawned process")
     harness.expectEqual(ProcessTable.record(pid: 1), nil, "other users' processes are not read")
+
+    // KERN_PROCARGS2 layout: argc, exec path, NUL padding, argv, environment.
+    func procArgs(argc: Int32, _ strings: String) -> [String] {
+        var bytes = withUnsafeBytes(of: argc) { Array($0) }
+        bytes += Array("/usr/local/bin/node\0\0\0".utf8) + Array(strings.utf8)
+        return bytes.withUnsafeBytes { ProcessTable.arguments(procArgs: $0) }
+    }
+    harness.expectEqual(
+        procArgs(argc: 3, "node\0server.js\0--port=3000\0SECRET=hunter2\0"),
+        ["node", "server.js", "--port=3000"],
+        "argv parsing stops at argc"
+    )
+    // A rewritten title covers the old argv; argc still says 3, so the next strings are the environment.
+    harness.expectEqual(
+        procArgs(argc: 3, "my-worker title that is as long as the old argv\0SECRET=hunter2\0PATH=/usr/bin\0"),
+        ["my-worker title that is as long as the old argv"],
+        "argv parsing never reads the environment behind a rewritten title"
+    )
 }
