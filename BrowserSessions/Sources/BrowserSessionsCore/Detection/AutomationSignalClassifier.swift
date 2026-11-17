@@ -38,7 +38,7 @@ public enum AutomationSignalClassifier {
         commandLine: String,
         parentCommandLine: String? = nil
     ) -> ProcessClassification? {
-        let basename = URL(fileURLWithPath: executablePath).lastPathComponent
+        let basename = (executablePath as NSString).lastPathComponent
         let path = executablePath.lowercased()
         let arguments = commandLine.lowercased()
 

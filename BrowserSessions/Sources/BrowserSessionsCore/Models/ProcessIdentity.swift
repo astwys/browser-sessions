@@ -22,7 +22,7 @@ public struct ProcessIdentity: Equatable, Sendable, Codable {
         self.parentPID = parentPID
         self.startTime = startTime
         self.executablePath = executablePath
-        self.executableBasename = executableBasename ?? URL(fileURLWithPath: executablePath).lastPathComponent
+        self.executableBasename = executableBasename ?? (executablePath as NSString).lastPathComponent
         self.commandLine = commandLine
         self.signalTokens = signalTokens
     }

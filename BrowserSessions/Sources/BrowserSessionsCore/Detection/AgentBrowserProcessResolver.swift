@@ -90,10 +90,15 @@ public struct AgentBrowserProcessResolver: AgentBrowserProcessResolving, Sendabl
 
     private func readString(sessionName: String, suffix: String) -> String? {
         guard isSafeSessionName(sessionName) else { return nil }
-        let file = "\(sessionName).\(suffix)"
-        let value = try? String(contentsOf: stateDirectory.appendingPathComponent(file), encoding: .utf8)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return value?.isEmpty == false ? value : nil
+        let path = stateDirectory.appendingPathComponent("\(sessionName).\(suffix)").path
+        // Each file holds one short value. Non-blocking and capped, so a FIFO or `/dev/zero` in its place
+        // can't stall the poll.
+        let descriptor = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC)
+        guard descriptor >= 0 else { return nil }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        guard let data = try? handle.read(upToCount: 256) else { return nil }
+        let value = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
     }
 
     private func isSafeSessionName(_ sessionName: String) -> Bool {

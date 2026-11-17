@@ -43,10 +43,10 @@ public struct DetectedEntry: Equatable, Sendable, Identifiable {
     public var launcherName: String? {
         let words = parentProcessSummary?.split(separator: " ").map(String.init) ?? []
         guard let first = words.first else { return nil }
-        let program = URL(fileURLWithPath: first).lastPathComponent
+        let program = (first as NSString).lastPathComponent
         let interpreters: Set<String> = ["node", "bun", "deno", "python", "python3"]
         if interpreters.contains(program), let script = words.dropFirst().first(where: { $0.hasPrefix("-") == false }) {
-            return URL(fileURLWithPath: script).deletingPathExtension().lastPathComponent
+            return ((script as NSString).lastPathComponent as NSString).deletingPathExtension
         }
         return program
     }

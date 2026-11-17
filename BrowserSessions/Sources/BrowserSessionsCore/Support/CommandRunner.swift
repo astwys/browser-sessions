@@ -27,7 +27,7 @@ public protocol CommandRunning: Sendable {
 /// Runs a command found on an augmented PATH. Returns within `timeout` plus fixed grace periods,
 /// whatever the command or its children do.
 public struct CommandRunner: CommandRunning, Sendable {
-    /// Time a command gets to exit after SIGTERM before SIGKILL.
+    /// Time a command gets to exit after SIGTERM before it and its children get SIGKILL.
     private static let terminationGrace: Duration = .milliseconds(500)
     /// Time to keep reading output after the command exits. A background child it spawned may hold
     /// the pipes open indefinitely, so the runner never waits for EOF.
@@ -63,11 +63,12 @@ public struct CommandRunner: CommandRunning, Sendable {
         var timedOut = false
         if await exited.wait(timeout: timeout) == false {
             timedOut = true
-            Self.signal(process, SIGTERM)
-            if await exited.wait(timeout: Self.terminationGrace) == false {
-                Self.signal(process, SIGKILL)
-                await exited.wait()
-            }
+            // Read before the first signal: once the command dies, its children move to launchd.
+            let descendants = Self.descendants(of: process.processIdentifier)
+            Self.signal(process, descendants, SIGTERM)
+            let exitedInGrace = await exited.wait(timeout: Self.terminationGrace)
+            Self.signal(process, descendants, SIGKILL)
+            if exitedInGrace == false { await exited.wait() }
         }
 
         async let stdoutDrained = stdout.eof.wait(timeout: Self.drainGrace)
@@ -84,16 +85,35 @@ public struct CommandRunner: CommandRunning, Sendable {
         )
     }
 
-    private static func signal(_ process: Process, _ signal: Int32) {
+    /// Every process the command started. Children forked after this read, during the grace period, are missed.
+    private static func descendants(of root: Int32) -> [ProcessRecord] {
+        let children = Dictionary(grouping: ProcessTable.all(), by: { $0.parentPID ?? -1 })
+        var tree = children[root, default: []]
+        var index = 0
+        while index < tree.count {
+            tree += children[tree[index].pid, default: []]
+            index += 1
+        }
+        return tree
+    }
+
+    /// Signals the command, and each descendant that is still the same process: same PID and start time.
+    /// The command is signalled through `Process`, which also works when its process table entry can't be read.
+    private static func signal(_ process: Process, _ descendants: [ProcessRecord], _ signal: Int32) {
         if process.isRunning {
             kill(process.processIdentifier, signal)
+        }
+        for record in descendants where ProcessTable.record(pid: record.pid)?.startTime == record.startTime {
+            kill(record.pid, signal)
         }
     }
 
     private static func environmentWithAugmentedPath() -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
         let inherited = environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
-        let components = commonExecutableDirectories() + inherited.split(separator: ":").map(String.init)
+        // The inherited PATH wins, so the app runs the same agent-browser as the user's shell; the usual
+        // install places are a fallback for a Finder launch, whose PATH has none of them.
+        let components = inherited.split(separator: ":").map(String.init) + commonExecutableDirectories()
         environment["PATH"] = Array(NSOrderedSet(array: components))
             .compactMap { $0 as? String }
             .joined(separator: ":")

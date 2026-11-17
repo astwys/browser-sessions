@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import BrowserSessionsCore
 
@@ -5,6 +6,7 @@ import BrowserSessionsCore
 func runAgentBrowserProcessResolverTests(_ harness: inout TestHarness) async {
     testResolverConnectsSessionPidToBrowserChild(&harness)
     testResolverIgnoresUnsafeSessionNames(&harness)
+    testResolverDoesNotBlockOnSpecialFiles(&harness)
 }
 
 @MainActor
@@ -42,4 +44,18 @@ func temporaryStateDirectory(pid: String) -> URL {
 
 private func write(_ value: String, to url: URL) {
     try? value.write(to: url, atomically: true, encoding: .utf8)
+}
+
+@MainActor
+private func testResolverDoesNotBlockOnSpecialFiles(_ harness: inout TestHarness) {
+    let stateDirectory = temporaryStateDirectory(pid: "600")
+    // A FIFO with no writer: a blocking open would wait forever.
+    mkfifo(stateDirectory.appendingPathComponent("alpha.engine").path, 0o600)
+    write(String(repeating: "9", count: 100_000), to: stateDirectory.appendingPathComponent("alpha.version"))
+
+    let metadata = AgentBrowserProcessResolver(stateDirectory: stateDirectory)
+        .metadata(for: ["alpha"], records: ProcessFixtures.realWorldTable)["alpha"]
+    harness.expectEqual(metadata?.agentPID, 600, "resolver still reads the pid next to special files")
+    harness.expectEqual(metadata?.engine, nil, "FIFO state file is skipped without blocking")
+    harness.expectEqual(metadata?.version?.count, 256, "oversized state file is read up to its cap")
 }

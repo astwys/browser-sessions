@@ -60,7 +60,7 @@ public struct DetectionEngine: Sendable {
     /// (`agent-browser`, `agent-browser-darwin-arm64`); a Node-hosted daemon would need its own rule.
     static func agentBrowserProcesses(in records: [ProcessRecord]) -> [String] {
         records
-            .filter { URL(fileURLWithPath: $0.executablePath).lastPathComponent.hasPrefix("agent-browser") }
+            .filter { ($0.executablePath as NSString).lastPathComponent.hasPrefix("agent-browser") }
             .map { "\($0.pid)@\($0.startTime.timeIntervalSince1970)" }
             .sorted()
     }
